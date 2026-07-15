@@ -93,6 +93,30 @@ For configure idelium-cli for test web application with chrome,firefox, windows,
 
 https://www.selenium.dev/documentation/webdriver/
 
+#### Selenium Grid
+
+Set `seleniumGridUrl` in the selected Idelium environment to run browser sessions
+on Selenium Grid instead of downloading or starting a local driver. Optional
+W3C capabilities belong in the `seleniumGridCapabilities` JSON object:
+
+```json
+{
+  "browser": "chrome",
+  "seleniumGridUrl": "http://selenium-grid:4444",
+  "seleniumGridCapabilities": {
+    "platformName": "linux",
+    "se:name": "Idelium test"
+  }
+}
+```
+
+The command line can override both settings with `--seleniumGridUrl=...` and
+`--seleniumGridCapabilities='{"platformName":"linux"}'`. Remote session
+creation does not fall back to a local browser when Grid is unavailable, so an
+infrastructure failure remains visible to automation. Grid URLs must use HTTP or
+HTTPS; TLS termination and Grid authentication should be configured outside the
+capability payload so credentials are not logged or stored with test results.
+
 ### Appium
 
 For configure idelium-cli for test native, hybrid and mobile web apps with iOS, Android and Windows:

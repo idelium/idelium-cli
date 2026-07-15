@@ -2,7 +2,9 @@
 from __future__ import absolute_import
 import time
 import sys
+from urllib.parse import urlsplit
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
@@ -111,7 +113,15 @@ class IdeliumSelenium:
         ''' only for server mode '''
         if 'browser' in config:
            config["json_config"]["browser"] = config["browser"]
-        if config["json_config"]["browser"] == "chrome":
+        if config.get("seleniumGridUrl"):
+            try:
+                driver = self.create_remote_driver(config)
+            except (ValueError, TypeError, WebDriverException) as err:
+                printer.danger("Unable to create Selenium Grid session")
+                if config["is_debug"]:
+                    printer.danger(str(err))
+                return_code = Result.KO
+        elif config["json_config"]["browser"] == "chrome":
             chrome_options = webdriver.ChromeOptions()
             if config["device"] is not None:
                 mobile_emulation = {"deviceName": config["device"]}
@@ -226,6 +236,49 @@ class IdeliumSelenium:
                 config["json_step"]["attachScreenshot"] = True
                 config["json_step"]["failedExit"] = True
         return {"driver": driver, 'returnCode': return_code, "config": config}
+
+    @staticmethod
+    def create_remote_driver(config):
+        """Create a Selenium Grid session from validated remote settings."""
+        grid_url = config["seleniumGridUrl"]
+        parsed_url = urlsplit(grid_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError("seleniumGridUrl must be an HTTP or HTTPS URL")
+        if parsed_url.username or parsed_url.password:
+            raise ValueError("seleniumGridUrl must not contain embedded credentials")
+
+        browser = config["json_config"]["browser"].lower()
+        option_factories = {
+            "chrome": webdriver.ChromeOptions,
+            "edge": webdriver.EdgeOptions,
+            "firefox": webdriver.FirefoxOptions,
+            "iexplorer": webdriver.IeOptions,
+            "safari": webdriver.SafariOptions,
+        }
+        if browser not in option_factories:
+            raise ValueError("The selected browser is not supported by Selenium Grid")
+
+        options = option_factories[browser]()
+        if config.get("useragent"):
+            if browser in {"chrome", "edge"}:
+                options.add_argument("user-agent=" + config["useragent"])
+            elif browser == "firefox":
+                options.set_preference(
+                    "general.useragent.override",
+                    config["useragent"],
+                )
+        if config.get("device") and browser == "chrome":
+            options.add_experimental_option(
+                "mobileEmulation",
+                {"deviceName": config["device"]},
+            )
+        options.accept_insecure_certs = bool(
+            config["json_config"].get("accept_self_certificate", False)
+        )
+        for key, value in (config.get("seleniumGridCapabilities") or {}).items():
+            options.set_capability(key, value)
+
+        return webdriver.Remote(command_executor=grid_url, options=options)
     @staticmethod
     def write_localstorage(driver, config, object_step):
         ''' write_localstorage '''

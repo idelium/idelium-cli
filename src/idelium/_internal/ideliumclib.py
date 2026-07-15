@@ -2,6 +2,7 @@
 from __future__ import absolute_import
 import sys
 import tempfile
+import json
 from pathlib import Path
 import selenium
 
@@ -37,6 +38,8 @@ class InitIdelium():
     --device                if is set useragent,height and width are ignored
     --url                   url for test 
     --ideliumwsBaseurl      idelium server url ex: https://localhost
+    --seleniumGridUrl       Selenium Grid endpoint, for example http://grid:4444
+    --seleniumGridCapabilities JSON object merged into remote browser capabilities
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -101,6 +104,8 @@ class InitIdelium():
             'os' : None,
             'appiumServer' : None,
             'appiumDesiredCaps' : None,
+            'seleniumGridUrl': None,
+            'seleniumGridCapabilities': None,
             'count':0,
             'ideliumKey':None,
             'forcedownload':False,
@@ -115,15 +120,11 @@ class InitIdelium():
         cl_params['dir_idelium_scripts'] = tempfile.mkdtemp()
         count=0
         for i in args:
-            array_command=i.split("=")
+            array_command=i.split("=", 1)
             command=array_command[0][2:]
             if command in cl_params:
                 if command == 'ideliumKey':
-                    cl_params['ideliumKey']=''
-                    if len(array_command)==3:
-                        cl_params['ideliumKey'] = array_command[1] + '=' 
-                    else:
-                        cl_params['ideliumKey'] = array_command[1]
+                    cl_params['ideliumKey'] = array_command[1]
                 elif command == "forcedownload":                
                     cl_params['forcedownload'] = True
                 elif command == 'ideliumServer':
@@ -205,6 +206,23 @@ class InitIdelium():
             cl_params['appiumServer']=json_config['appiumServer']
         if 'isRealDevice' in json_config:
             cl_params['appiumDesiredCaps']=json_config['appiumDesiredCaps']
+        if cl_params['seleniumGridUrl'] is None and 'seleniumGridUrl' in json_config:
+            cl_params['seleniumGridUrl'] = json_config['seleniumGridUrl']
+        if (cl_params['seleniumGridCapabilities'] is None
+                and 'seleniumGridCapabilities' in json_config):
+            cl_params['seleniumGridCapabilities'] = json_config['seleniumGridCapabilities']
+        if isinstance(cl_params['seleniumGridCapabilities'], str):
+            try:
+                cl_params['seleniumGridCapabilities'] = json.loads(
+                    cl_params['seleniumGridCapabilities']
+                )
+            except json.JSONDecodeError:
+                printer.danger('seleniumGridCapabilities must be a JSON object')
+                sys.exit(1)
+        if (cl_params['seleniumGridCapabilities'] is not None
+                and not isinstance(cl_params['seleniumGridCapabilities'], dict)):
+            printer.danger('seleniumGridCapabilities must be a JSON object')
+            sys.exit(1)
         if cl_params['idProject'] is not None:
             json_config['projectId'] = cl_params['idProject']
 
