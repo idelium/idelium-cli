@@ -26,6 +26,21 @@ pip install idelium
 
 idelium-cli can be used in two ways:
 
+### HTTP security
+
+Every Idelium, Postman, Jira, and Zephyr request verifies TLS certificates and
+uses a 5-second connection timeout plus a 30-second read timeout by default.
+Use `--caBundle=/path/to/internal-ca.pem` for a private certificate authority.
+The timeout values can be changed with `--httpConnectTimeout` and
+`--httpReadTimeout`.
+
+`--insecure` disables certificate verification only when explicitly provided
+and emits a visible warning. It is intended for isolated development systems,
+not CI or production. Automatic retries are bounded and apply only to safe or
+idempotent methods; POST requests are never retried. Verbose diagnostics show
+the method, redacted URL, and status without printing credentials, headers,
+payloads, or complete response bodies.
+
 To directly launch a test cycle, useful for those who want to integrate integration tests with jenkins, bamboo or similar:
 
 ```

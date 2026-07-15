@@ -7,12 +7,12 @@ import re
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 from requests_hawk import HawkAuth
 from requests_oauthlib import OAuth1
 
 from idelium._internal.commons.ideliumprinter import InitPrinter
+from idelium._internal.commons.connection import HttpClient, HttpTransportError
 
 
 printer = InitPrinter()
@@ -34,7 +34,7 @@ class PostmanCollection:
     VARIABLE_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
     def __init__(self, session=None, verify=True, timeout=(5, 30)):
-        self.session = session or requests.Session()
+        self.client = HttpClient(session=session, verify=verify, timeout=timeout)
         self.verify = verify
         self.timeout = timeout
         self.variables = {}
@@ -220,9 +220,11 @@ class PostmanCollection:
         started_at = time.monotonic()
 
         try:
-            response = self.session.request(
+            response = self.client.request(
                 method,
                 url,
+                debug=debug,
+                raise_for_status=False,
                 headers=headers,
                 auth=auth,
                 data=data,
@@ -243,7 +245,7 @@ class PostmanCollection:
                 "passed": all(assertion["passed"] for assertion in assertions),
                 "assertions": assertions,
             }
-        except requests.RequestException:
+        except HttpTransportError:
             result = {
                 "name": item.get("name", "Unnamed request"),
                 "response": "Request failed.",
@@ -280,6 +282,7 @@ class PostmanCollection:
         if postman.get("insecure", False):
             printer.warning("Postman TLS certificate verification is disabled.")
             self.verify = False
+            self.client.verify = False
         return self.parse_collection(
             postman["collection"],
             debug,

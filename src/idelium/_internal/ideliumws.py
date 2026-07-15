@@ -7,9 +7,6 @@ import collections
 from pathlib import Path
 import base64
 from idelium._internal.commons.connection import Connection
-import requests
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from PIL import Image
 
 

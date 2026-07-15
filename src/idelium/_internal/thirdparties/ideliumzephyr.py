@@ -7,8 +7,8 @@ import datetime
 import time
 import os
 from urllib.parse import urlencode
-import requests
 from idelium._internal.commons.ideliumprinter import InitPrinter
+from idelium._internal.commons.connection import Connection
 
 class ZephyrConnection:
     ''' ZephyrConnection '''
@@ -26,10 +26,9 @@ class ZephyrConnection:
         is_ok = False
         #give all the step of testcase
         url_issue = api_url + "issue/" + issue
-        req = requests.get(url_issue, auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " GET " + url_issue)
-            print(req.text)
+        req = Connection.request(
+            "GET", url_issue, auth=(username, password), debug=is_debug
+        )
         if req.status_code != 200:
             printer.danger("credential error o issue jira not exist")
             sys.exit(1)
@@ -46,10 +45,9 @@ class ZephyrConnection:
                                    json_jira["fields"]["status"]["name"] +
                                    "' so is skipped")
         urlzephyr = zapi_url + "teststep/" + json_jira["id"]
-        req = requests.get(urlzephyr, auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " GET " + urlzephyr)
-            print("Response: " + req.text)
+        req = Connection.request(
+            "GET", urlzephyr, auth=(username, password), debug=is_debug
+        )
         json_zephyr = json.loads(req.text,
                                  object_pairs_hook=collections.OrderedDict)
         return {
@@ -73,14 +71,14 @@ class ZephyrConnection:
             "versionId": version_id,
             "sprintId": None,
         }
-        req = requests.post(url,
-                          headers=headers,
-                          data=json.dumps(payload),
-                          auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " POST " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "POST",
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
     @staticmethod
     def create_execution(
@@ -104,14 +102,14 @@ class ZephyrConnection:
         }
         if folder_id is not None:
             payload["folderId"] = folder_id
-        req = requests.post(url,
-                          headers=headers,
-                          data=json.dumps(payload),
-                          auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " POST " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "POST",
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
 
     def create_cycle_folder(
@@ -139,14 +137,14 @@ class ZephyrConnection:
             "projectId": project_id,
             "versionId": version_id,
         }
-        req = requests.post(url,
-                          headers=headers,
-                          data=json.dumps(payload),
-                          auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " POST " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "POST",
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
     @staticmethod
     def get_executions(
@@ -173,21 +171,22 @@ class ZephyrConnection:
         }
         query_string = urlencode(payload)
         url = url + "?" + query_string
-        req = requests.get(url, headers=headers, auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " GET " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "GET",
+            url,
+            headers=headers,
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
     @staticmethod
     def get_step_id(is_debug, zapi_url, execution_id, username, password):
         '''get_step_id'''
         os.environ["NO_PROXY"] = "<host>"
         url = zapi_url + "stepResult?execution_id=" + str(execution_id)
-        req = requests.get(url, auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " GET " + url)
-            print("Response: " + req.text)
+        req = Connection.request(
+            "GET", url, auth=(username, password), debug=is_debug
+        )
         return json.loads(req.text)
     @staticmethod
     def update_test_step(is_debug, zapi_url, step_id, status, step_failed,
@@ -201,14 +200,14 @@ class ZephyrConnection:
             if "note" in step_failed:
                 comment = "Error:" + step_failed["note"]
         payload = {"status": status, "comment": comment}
-        req = requests.put(url,
-                         headers=headers,
-                         data=json.dumps(payload),
-                         auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " PUT " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "PUT",
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
     @staticmethod
     def update_execution(is_debug, zapi_url, execution_id, status,
@@ -220,14 +219,14 @@ class ZephyrConnection:
         payload = {
             "status": status,
         }
-        req = requests.put(url,
-                         headers=headers,
-                         data=json.dumps(payload),
-                         auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " PUT " + url)
-            print("Payload: " + json.dumps(payload))
-            print("Response: " + req.text)
+        req = Connection.request(
+            "PUT",
+            url,
+            headers=headers,
+            data=json.dumps(payload),
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
     @staticmethod
     def add_attachment_buffered(
@@ -251,13 +250,14 @@ class ZephyrConnection:
             "X-Atlassian-Token": "nocheck",
             "Accept": "application/json",
         }
-        req = requests.post(url,
-                          headers=headers,
-                          files=files,
-                          auth=(username, password))
-        if is_debug is True:
-            print(str(req.status_code) + " POST " + url)
-            print("Response: " + req.text)
+        req = Connection.request(
+            "POST",
+            url,
+            headers=headers,
+            files=files,
+            auth=(username, password),
+            debug=is_debug,
+        )
         return json.loads(req.text)
 
     #

@@ -46,7 +46,12 @@ class StartManager:
                 continue
 
             if object_step['stepType'] == 'postman_collection':
-                postman=PostmanCollection()
+                verify = config.get("caBundle") or not config.get("insecure", False)
+                timeout = (
+                    float(config.get("httpConnectTimeout", 5)),
+                    float(config.get("httpReadTimeout", 30)),
+                )
+                postman=PostmanCollection(verify=verify, timeout=timeout)
                 postman_data=postman.start_postman_test(object_step['collection'],config["is_debug"])
                 typeOfStep='postman'
                 if any(not result['passed'] for result in postman_data):

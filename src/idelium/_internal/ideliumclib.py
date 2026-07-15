@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import selenium
 
+from idelium._internal.commons.connection import Connection
+
 
 class InitIdelium():
     ''' init '''
@@ -40,6 +42,10 @@ class InitIdelium():
     --ideliumwsBaseurl      idelium server url ex: https://localhost
     --seleniumGridUrl       Selenium Grid endpoint, for example http://grid:4444
     --seleniumGridCapabilities JSON object merged into remote browser capabilities
+    --caBundle              path to a trusted CA bundle
+    --insecure              disable TLS verification for development only
+    --httpConnectTimeout    HTTP connection timeout in seconds (default 5)
+    --httpReadTimeout       HTTP read timeout in seconds (default 30)
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -106,6 +112,10 @@ class InitIdelium():
             'appiumDesiredCaps' : None,
             'seleniumGridUrl': None,
             'seleniumGridCapabilities': None,
+            'caBundle': None,
+            'insecure': False,
+            'httpConnectTimeout': 5,
+            'httpReadTimeout': 30,
             'count':0,
             'ideliumKey':None,
             'forcedownload':False,
@@ -125,10 +135,8 @@ class InitIdelium():
             if command in cl_params:
                 if command == 'ideliumKey':
                     cl_params['ideliumKey'] = array_command[1]
-                elif command == "forcedownload":                
-                    cl_params['forcedownload'] = True
-                elif command == 'ideliumServer':
-                    cl_params['ideliumServer'] = True
+                elif command in {"forcedownload", "ideliumServer", "insecure"}:
+                    cl_params[command] = True
                 elif command == 'ideliumServerPort': 
                     cl_params['ideliumServerPort'] = int(array_command[1])
                 else:
@@ -175,9 +183,30 @@ class InitIdelium():
                     print(self.get_syntax())
                     printer.danger("\nenvironment must be set")
                     sys.exit(1)
+        self.configure_http(cl_params, printer)
         return {
             'cl_params': cl_params,
         }
+
+    @staticmethod
+    def configure_http(cl_params, printer):
+        """Configure secure HTTP behavior for CLI and server modes."""
+        try:
+            timeout = (
+                float(cl_params['httpConnectTimeout']),
+                float(cl_params['httpReadTimeout']),
+            )
+        except (TypeError, ValueError):
+            printer.danger('HTTP timeouts must be numbers')
+            sys.exit(1)
+        if timeout[0] <= 0 or timeout[1] <= 0:
+            printer.danger('HTTP timeouts must be greater than zero')
+            sys.exit(1)
+        Connection.configure(
+            ca_bundle=cl_params['caBundle'],
+            insecure=cl_params['insecure'],
+            timeout=timeout,
+        )
 
     def load_parameters(self, cl_params, ideliumws, printer):
 
