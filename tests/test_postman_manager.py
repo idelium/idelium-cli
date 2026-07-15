@@ -9,10 +9,12 @@ from idelium._internal.ideliummanager import StartManager
 class PostmanManagerTest(unittest.TestCase):
     @patch("idelium._internal.ideliummanager.PostmanCollection")
     def test_failed_postman_assertion_fails_the_idelium_step(self, postman_class):
-        postman_class.return_value.start_postman_test.return_value = [{
-            "passed": False,
-            "assertions": [{"name": "body", "passed": False}],
-        }]
+        postman_class.return_value.start_postman_test.return_value = [
+            {
+                "passed": False,
+                "assertions": [{"name": "body", "passed": False}],
+            }
+        ]
         step = {
             "stepType": "postman_collection",
             "collection": {"collection": {"item": []}},
@@ -31,19 +33,25 @@ class PostmanManagerTest(unittest.TestCase):
         self.assertEqual("postman", result["type"])
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")
-    def test_successful_postman_assertions_keep_the_step_successful(self, postman_class):
-        postman_class.return_value.start_postman_test.return_value = [{
-            "passed": True,
-            "assertions": [{"name": "body", "passed": True}],
-        }]
+    def test_successful_postman_assertions_keep_the_step_successful(
+        self, postman_class
+    ):
+        postman_class.return_value.start_postman_test.return_value = [
+            {
+                "passed": True,
+                "assertions": [{"name": "body", "passed": True}],
+            }
+        ]
         config = {
             "wrapper": Mock(),
             "printer": Mock(),
             "json_step": {
-                "steps": [{
-                    "stepType": "postman_collection",
-                    "collection": {"collection": {"item": []}},
-                }],
+                "steps": [
+                    {
+                        "stepType": "postman_collection",
+                        "collection": {"collection": {"item": []}},
+                    }
+                ],
             },
             "is_debug": False,
         }

@@ -78,7 +78,9 @@ class HttpClient:
             (key, "[REDACTED]" if cls._is_sensitive(key) else value)
             for key, value in parse_qsl(parts.query, keep_blank_values=True)
         ]
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(query), "")
+        )
 
     def request(self, method, url, debug=False, raise_for_status=True, **kwargs):
         """Send one request with safe defaults and optional status validation."""

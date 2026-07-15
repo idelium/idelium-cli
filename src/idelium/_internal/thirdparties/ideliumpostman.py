@@ -93,7 +93,9 @@ class PostmanCollection:
             (key, "[REDACTED]" if cls._is_sensitive(key) else value)
             for key, value in parse_qsl(parts.query, keep_blank_values=True)
         ]
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(query), "")
+        )
 
     @staticmethod
     def _pairs_to_dict(values):
@@ -133,7 +135,9 @@ class PostmanCollection:
         if auth_type == "basic":
             return HTTPBasicAuth(values.get("username", ""), values.get("password", ""))
         if auth_type == "digest":
-            return HTTPDigestAuth(values.get("username", ""), values.get("password", ""))
+            return HTTPDigestAuth(
+                values.get("username", ""), values.get("password", "")
+            )
         if auth_type == "oauth1":
             return OAuth1(
                 values.get("consumerKey", ""),
@@ -185,27 +189,31 @@ class PostmanCollection:
             if expected_status is not None
             else 200 <= response.status_code < 400
         )
-        assertions = [{
-            "name": "status",
-            "passed": status_passed,
-            "message": (
-                "Status matched."
-                if status_passed
-                else "Unexpected HTTP status code."
-            ),
-        }]
+        assertions = [
+            {
+                "name": "status",
+                "passed": status_passed,
+                "message": (
+                    "Status matched."
+                    if status_passed
+                    else "Unexpected HTTP status code."
+                ),
+            }
+        ]
 
         if expected is not None and expected.get("body") is not None:
             body_passed = self._body_matches(response.text, expected["body"])
-            assertions.append({
-                "name": "body",
-                "passed": body_passed,
-                "message": (
-                    "Body matched."
-                    if body_passed
-                    else "Response body did not match the saved Postman example."
-                ),
-            })
+            assertions.append(
+                {
+                    "name": "body",
+                    "passed": body_passed,
+                    "message": (
+                        "Body matched."
+                        if body_passed
+                        else "Response body did not match the saved Postman example."
+                    ),
+                }
+            )
 
         return assertions
 
@@ -254,11 +262,13 @@ class PostmanCollection:
                 "url": self._redact_url(url),
                 "time": time.monotonic() - started_at,
                 "passed": False,
-                "assertions": [{
-                    "name": "network",
-                    "passed": False,
-                    "message": "The HTTP request could not be completed.",
-                }],
+                "assertions": [
+                    {
+                        "name": "network",
+                        "passed": False,
+                        "message": "The HTTP request could not be completed.",
+                    }
+                ],
             }
 
         if debug:
@@ -270,7 +280,9 @@ class PostmanCollection:
     def parse_collection(self, collection, debug=False, environment=None):
         """Execute all requests, including requests inside nested folders."""
         self.variables = self._enabled_values(collection.get("variable", []))
-        self.variables.update(self._enabled_values((environment or {}).get("values", [])))
+        self.variables.update(
+            self._enabled_values((environment or {}).get("values", []))
+        )
         inherited_auth = collection.get("auth")
         return [
             self.connection_test(item, debug, inherited_auth)

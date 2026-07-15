@@ -38,11 +38,10 @@ setup(
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
     ],
@@ -78,14 +77,15 @@ setup(
     #
     # For an analysis of "install_requires" vs idelium's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['selenium',
-                      'libmagic',
-                      'Appium-Python-Client',
-                      'webdriver-manager',
-                      'Pillow',
-                      'requests_hawk',
-                      'requests_oauthlib',
-                      'tqdm',
+    install_requires=['selenium>=4.27,<5',
+                      'libmagic>=1,<2',
+                      'Appium-Python-Client>=4,<6',
+                      'webdriver-manager>=4,<5',
+                      'Pillow>=10,<13',
+                      'requests>=2.32,<3',
+                      'requests_hawk>=1.2,<2',
+                      'requests_oauthlib>=2,<3',
+                      'tqdm>=4.66,<5',
                       ],  # Optional
 
     # List additional groups of dependencies here (e.g. development
@@ -97,8 +97,13 @@ setup(
     # Similar to `install_requires` above, these must be valid existing
     # projects.
     extras_require={  # Optional
-        'dev': ['check-manifest'],
-        'test': ['coverage'],
+        'dev': [
+            'build>=1.2,<2',
+            'check-manifest>=0.50,<1',
+            'mypy>=1.10,<2',
+            'ruff>=0.11,<1',
+        ],
+        'test': ['coverage>=7,<8'],
     },
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/idelium/idelium-cli/issues',
@@ -112,7 +117,5 @@ setup(
         ],
     },
     zip_safe=False,
-    # NOTE: python_requires is duplicated in __idelium-runner__.py.
-    # When changing this value, please change the other copy as well.
-    python_requires=">=3.7",
+    python_requires=">=3.10,<3.14",
 )

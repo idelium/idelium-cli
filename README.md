@@ -12,7 +12,8 @@ For more info: https://idelium.io
 
 ## Prerequisite
 
-Python 3.8.X
+Idelium CLI supports CPython 3.10, 3.11, 3.12, and 3.13. Package metadata,
+classifiers, tests, and the CI matrix use this same range.
 
 ## Installing
 
@@ -20,6 +21,20 @@ If you have pip on your system, you can simply install or upgrade the Python bin
 
 ```
 pip install idelium
+```
+
+For development, install the quality and test extras and run the same gates as
+CI:
+
+```bash
+python -m pip install -e '.[dev,test]'
+ruff check src tests
+ruff format --check src/idelium/_internal/commons/connection.py src/idelium/_internal/thirdparties/ideliumpostman.py tests
+mypy --allow-untyped-defs --allow-any-generics --disable-error-code var-annotated src/idelium/_internal/commons/connection.py src/idelium/_internal/thirdparties/ideliumpostman.py
+COVERAGE_OUTPUT_DIR=.coverage-data coverage run --source=src/idelium -m unittest discover -s tests
+coverage combine .coverage-data
+coverage report --fail-under=25
+python -m build
 ```
 
 ## Run the command

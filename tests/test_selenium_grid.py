@@ -80,15 +80,19 @@ class SeleniumGridTest(unittest.TestCase):
             },
             "configStep": {},
         }
-        defined = loader.define_parameters([
-            "idelium",
-            "--idProject=1",
-            "--idCycle=2",
-            "--environment=ci",
-            "--ideliumKey=key==",
-            "--seleniumGridUrl=https://cli-grid.test:4444",
-            '--seleniumGridCapabilities={"platformName":"linux"}',
-        ], web_service, printer)
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject=1",
+                "--idCycle=2",
+                "--environment=ci",
+                "--ideliumKey=key==",
+                "--seleniumGridUrl=https://cli-grid.test:4444",
+                '--seleniumGridCapabilities={"platformName":"linux"}',
+            ],
+            web_service,
+            printer,
+        )
 
         loaded = loader.load_parameters(defined["cl_params"], web_service, printer)
 

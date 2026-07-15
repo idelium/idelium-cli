@@ -19,24 +19,30 @@ class PostmanCollectionTest(unittest.TestCase):
         session.request.return_value = self.response(200, '{"value":1,"ok":true}')
         runner = PostmanCollection(session=session)
         collection = {
-            "item": [{
-                "name": "Echo",
-                "request": {
-                    "method": "GET",
-                    "url": {"raw": "https://example.test/echo"},
-                    "header": [],
-                },
-                "response": [{
-                    "code": 200,
-                    "body": '{"ok":true,"value":1}',
-                }],
-            }],
+            "item": [
+                {
+                    "name": "Echo",
+                    "request": {
+                        "method": "GET",
+                        "url": {"raw": "https://example.test/echo"},
+                        "header": [],
+                    },
+                    "response": [
+                        {
+                            "code": 200,
+                            "body": '{"ok":true,"value":1}',
+                        }
+                    ],
+                }
+            ],
         }
 
         results = runner.parse_collection(collection)
 
         self.assertTrue(results[0]["passed"])
-        self.assertEqual(["status", "body"], [item["name"] for item in results[0]["assertions"]])
+        self.assertEqual(
+            ["status", "body"], [item["name"] for item in results[0]["assertions"]]
+        )
         self.assertTrue(session.request.call_args.kwargs["verify"])
         self.assertEqual((5, 30), session.request.call_args.kwargs["timeout"])
 
@@ -68,24 +74,32 @@ class PostmanCollectionTest(unittest.TestCase):
         runner = PostmanCollection(session=session)
         collection = {
             "variable": [{"key": "host", "value": "collection.test"}],
-            "item": [{
-                "name": "Folder",
-                "item": [{
-                    "name": "Nested request",
-                    "request": {
-                        "method": "GET",
-                        "url": {"raw": "https://{{host}}/echo?token=secret"},
-                        "header": [],
-                    },
-                    "response": [{
-                        "code": 200,
-                        "body": json.dumps({
-                            "message": "ok",
-                            "access_token": "sensitive-token",
-                        }),
-                    }],
-                }],
-            }],
+            "item": [
+                {
+                    "name": "Folder",
+                    "item": [
+                        {
+                            "name": "Nested request",
+                            "request": {
+                                "method": "GET",
+                                "url": {"raw": "https://{{host}}/echo?token=secret"},
+                                "header": [],
+                            },
+                            "response": [
+                                {
+                                    "code": 200,
+                                    "body": json.dumps(
+                                        {
+                                            "message": "ok",
+                                            "access_token": "sensitive-token",
+                                        }
+                                    ),
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
         }
         environment = {
             "values": [{"key": "host", "value": "environment.test", "enabled": True}],
@@ -93,9 +107,17 @@ class PostmanCollectionTest(unittest.TestCase):
 
         result = runner.parse_collection(collection, environment=environment)[0]
 
-        self.assertEqual("https://environment.test/echo?token=%5BREDACTED%5D", result["url"])
-        self.assertEqual({"message": "ok", "access_token": "[REDACTED]"}, json.loads(result["response"]))
-        self.assertEqual("https://environment.test/echo?token=secret", session.request.call_args.args[1])
+        self.assertEqual(
+            "https://environment.test/echo?token=%5BREDACTED%5D", result["url"]
+        )
+        self.assertEqual(
+            {"message": "ok", "access_token": "[REDACTED]"},
+            json.loads(result["response"]),
+        )
+        self.assertEqual(
+            "https://environment.test/echo?token=secret",
+            session.request.call_args.args[1],
+        )
 
 
 if __name__ == "__main__":
