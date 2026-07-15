@@ -49,6 +49,9 @@ class StartManager:
                 postman=PostmanCollection()
                 postman_data=postman.start_postman_test(object_step['collection'],config["is_debug"])
                 typeOfStep='postman'
+                if any(not result['passed'] for result in postman_data):
+                    status = "2"
+                    step_failed = object_step
                 continue
 
             return_object_step = wrapper.command(object_step["stepType"], driver, config, object_step)

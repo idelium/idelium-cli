@@ -99,6 +99,23 @@ For configure idelium-cli for test native, hybrid and mobile web apps with iOS, 
 
 https://appium.io/
 
+### Postman collections
+
+Idelium executes Postman Collection v2.1 requests, including requests inside
+nested folders. Collection variables are loaded first and enabled environment
+values override them.
+
+Saved Postman response examples define the assertions. When an example is
+present, Idelium checks its HTTP status and response body; JSON bodies are
+compared semantically, without depending on object key order. Without a saved
+example, the request passes only for an HTTP status from 200 through 399. A
+failed status or body assertion fails the containing Idelium step.
+
+TLS certificate verification and finite connection/read timeouts are enabled by
+default. An uploaded execution object may set `insecure` to `true` only for an
+explicit development run; the CLI prints a warning. Stored results redact common
+credential fields from JSON response bodies and sensitive URL query parameters.
+
 ## Webdriver
 
 The webdriver is the interface to write instructions that work interchangeably across browsers, each browser has its own driver:
