@@ -94,11 +94,6 @@ PY
   fi
 fi
 
-REPOSITORY_ARGS=()
-if [[ "${PYPI_REPOSITORY_URL:-}" != "" ]]; then
-  REPOSITORY_ARGS+=(--repository-url "$PYPI_REPOSITORY_URL")
-fi
-
 echo "Publishing Idelium CLI $VERSION to PyPI."
 echo "Use username __token__ and a project-scoped PyPI API token when prompted."
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -107,4 +102,8 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   printf '\n'
   exit 0
 fi
-"$PYTHON" -m twine upload "${REPOSITORY_ARGS[@]}" "${DIST_FILES[@]}"
+if [[ "${PYPI_REPOSITORY_URL:-}" != "" ]]; then
+  "$PYTHON" -m twine upload --repository-url "$PYPI_REPOSITORY_URL" "${DIST_FILES[@]}"
+else
+  "$PYTHON" -m twine upload "${DIST_FILES[@]}"
+fi
