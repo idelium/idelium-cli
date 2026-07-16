@@ -1,4 +1,7 @@
-![Idelium](../idelium-docker/logo/idelium.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/idelium/idelium-docker/main/logo/idelium_white.png">
+  <img alt="Idelium" src="https://raw.githubusercontent.com/idelium/idelium-docker/main/logo/idelium.png">
+</picture>
 
 # Idelium CLI
 
