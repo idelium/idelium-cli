@@ -1,7 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/idelium/idelium-docker/main/logo/idelium_white.png">
-  <img alt="Idelium" src="https://raw.githubusercontent.com/idelium/idelium-docker/main/logo/idelium.png">
-</picture>
+![Idelium](https://github.com/idelium/idelium-docker/raw/main/logo/idelium.png)
 
 # Idelium CLI
 
@@ -377,11 +374,12 @@ live credentials or customer data in a public issue.
 
 ## Contributing
 
-Read [`AGENTS.md`](AGENTS.md) before making changes. Documentation, docstrings,
-comments, diagnostics, and new identifiers must be in clear English. Keep
-transport behavior centralized, preserve stable command options, add focused
-tests for behavioral changes, avoid unrelated refactoring, and run the relevant
-quality gates before opening a pull request.
+Read the [Idelium CLI engineering directives](https://github.com/idelium/idelium-cli/blob/main/AGENTS.md)
+before making changes. Documentation, docstrings, comments, diagnostics, and new
+identifiers must be in clear English. Keep transport behavior centralized,
+preserve stable command options, add focused tests for behavioral changes, avoid
+unrelated refactoring, and run the relevant quality gates before opening a pull
+request.
 
 ## Related projects
 
@@ -391,5 +389,6 @@ quality gates before opening a pull request.
 - [`idelium-docker`](https://github.com/idelium/idelium-docker) — reproducible
   full-stack environment.
 
-Idelium CLI is distributed under the [MIT License](LICENSE.txt). Project
-information is available at [idelium.io](https://idelium.io/).
+Idelium CLI is distributed under the
+[MIT License](https://github.com/idelium/idelium-cli/blob/main/LICENSE.txt).
+Project information is available at [idelium.io](https://idelium.io/).
