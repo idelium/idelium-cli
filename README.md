@@ -27,6 +27,7 @@ For development, install the quality and test extras and run the same gates as
 CI:
 
 ```bash
+python -m pip install --upgrade pip 'setuptools>=83,<84'
 python -m pip install -e '.[dev,test]'
 python -m pip_audit
 ruff check src tests
