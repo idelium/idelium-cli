@@ -2,6 +2,7 @@ include AGENTS.md
 include LICENSE.txt
 include README.md
 include pyproject.toml
+recursive-include scripts *.sh
 prune .github
 prune docs/build
 prune news

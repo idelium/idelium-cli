@@ -44,7 +44,7 @@ setup(
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
     ],
-    url="https://idelium.io/",
+    url="https://github.com/idelium/idelium-cli",
     package_dir={"": "src"},
 
     # You can just specify package directories manually here if your project is
@@ -107,8 +107,8 @@ setup(
     },
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/idelium/idelium-cli/issues',
-        'Project': 'https://idelium.io',
-        'Say Thanks!': 'http://www.idelfuschini.it',
+        'Project': 'https://github.com/idelium/idelium-cli',
+        'Documentation': 'https://github.com/idelium/idelium-cli#readme',
         'Source': 'https://github.com/idelium/idelium-cli/',
     },
     entry_points={  # Optional

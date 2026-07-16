@@ -117,7 +117,7 @@ Options use `--name=value` unless shown as a flag.
 | `--url=<url>` | Override the environment target URL | environment value |
 | `--idChannel=<id>` | Optional execution channel | none |
 | `--reportingService=<service>` | Result destination: `idelium` or `zephyr` | `idelium` |
-| `--ideliumwsBaseurl=<url>` | Idelium service origin | `https://service.idelium.io` |
+| `--ideliumwsBaseurl=<url>` | Idelium service origin | configured default |
 | `--ideliumKey=<key>` | API key; prefer the protected key file | `~/.idelium` |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
@@ -425,4 +425,5 @@ request.
 
 Idelium CLI is distributed under the
 [MIT License](https://github.com/idelium/idelium-cli/blob/main/LICENSE.txt).
-Project information is available at [idelium.io](https://idelium.io/).
+Project information is available on
+[GitHub](https://github.com/idelium/idelium-cli).

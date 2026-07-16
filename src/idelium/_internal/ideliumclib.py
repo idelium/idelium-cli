@@ -85,7 +85,7 @@ class InitIdelium():
         return {
             'execution_name': 'automation test python',
             'reportingService': 'idelium',
-            'ideliumwsBaseurl': 'https://service.idelium.io',
+            'ideliumwsBaseurl': None,
             'base_url':None,
             'zephyrApiUrl':None,
             'jiraApiUrl':None,
@@ -182,6 +182,10 @@ class InitIdelium():
                 if cl_params['environment'] is None:
                     print(self.get_syntax())
                     printer.danger("\nenvironment must be set")
+                    sys.exit(1)
+                if cl_params['ideliumwsBaseurl'] is None:
+                    print(self.get_syntax())
+                    printer.danger("\nideliumwsBaseurl must be set")
                     sys.exit(1)
         self.configure_http(cl_params, printer)
         return {

@@ -87,6 +87,7 @@ class SeleniumGridTest(unittest.TestCase):
                 "--idCycle=2",
                 "--environment=ci",
                 "--ideliumKey=key==",
+                "--ideliumwsBaseurl=https://api.example.test",
                 "--seleniumGridUrl=https://cli-grid.test:4444",
                 '--seleniumGridCapabilities={"platformName":"linux"}',
             ],
