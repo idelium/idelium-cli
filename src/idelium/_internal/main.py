@@ -20,7 +20,7 @@ idelium=StartManager()
 printer=InitPrinter()
 ideliumws=IdeliumWs()
 idelium_cl_lib=InitIdelium()
-IDELIUM_VERSION='1.0.11'
+IDELIUM_VERSION='1.0.12'
 
 
 def start_server(cl_params):

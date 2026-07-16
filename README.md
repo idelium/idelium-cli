@@ -317,6 +317,40 @@ Before publishing a release:
 5. Confirm no key, certificate, execution result, cache, or local configuration
    entered the distribution.
 
+Build the package artifacts with:
+
+```bash
+scripts/build-package.sh
+```
+
+The build script refuses dirty worktrees by default so release artifacts match a
+reviewable commit. Set `ALLOW_DIRTY_BUILD=1` only for local validation.
+
+Publish the already built artifacts to PyPI with:
+
+```bash
+scripts/publish-package.sh
+```
+
+Preview the upload without contacting PyPI with:
+
+```bash
+DRY_RUN=1 scripts/publish-package.sh
+```
+
+The publish script requires the release tag to exist, uploads only artifacts for
+the package version reported by `setup.py`, verifies the tag exists on `origin`,
+checks that the version is not already present on PyPI, runs `twine check`, and
+never stores PyPI credentials. Set `REQUIRE_CLEAN_WORKTREE=1` to make it refuse
+dirty worktrees. When prompted by Twine, use `__token__` as the username and a
+project-scoped PyPI API token as the password.
+
+To test the upload flow against TestPyPI:
+
+```bash
+PYPI_REPOSITORY_URL=https://test.pypi.org/legacy/ scripts/publish-package.sh
+```
+
 ## Exit behavior and automation
 
 Treat any non-zero process exit as a failed CLI invocation. Preserve stdout and
