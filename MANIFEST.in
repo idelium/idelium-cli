@@ -1,11 +1,7 @@
-include AUTHORS.txt
+include AGENTS.md
 include LICENSE.txt
-include NEWS.rst
-include README.rst
-include SECURITY.md
+include README.md
 include pyproject.toml
-
-include src/idelium
 prune .github
 prune docs/build
 prune news

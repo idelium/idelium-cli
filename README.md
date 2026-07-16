@@ -28,12 +28,14 @@ CI:
 
 ```bash
 python -m pip install -e '.[dev,test]'
+python -m pip_audit
 ruff check src tests
 ruff format --check src/idelium/_internal/commons/connection.py src/idelium/_internal/thirdparties/ideliumpostman.py tests
 mypy --allow-untyped-defs --allow-any-generics --disable-error-code var-annotated src/idelium/_internal/commons/connection.py src/idelium/_internal/thirdparties/ideliumpostman.py
 COVERAGE_OUTPUT_DIR=.coverage-data coverage run --source=src/idelium -m unittest discover -s tests
 coverage combine .coverage-data
-coverage report --fail-under=25
+coverage report --fail-under=27
+check-manifest
 python -m build
 ```
 

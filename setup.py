@@ -33,7 +33,6 @@ setup(
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
         "Topic :: Software Development :: Build Tools",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
@@ -101,6 +100,7 @@ setup(
             'build>=1.2,<2',
             'check-manifest>=0.50,<1',
             'mypy>=1.10,<2',
+            'pip-audit>=2.7,<3',
             'ruff>=0.11,<1',
         ],
         'test': ['coverage>=7,<8'],

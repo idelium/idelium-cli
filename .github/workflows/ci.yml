@@ -31,6 +31,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,test]'
 
+      - name: Audit installed dependencies
+        run: python -m pip_audit
+
       - name: Lint
         run: ruff check src tests
 
@@ -43,11 +46,13 @@ jobs:
       - name: Run network-free tests with coverage
         run: |
           coverage run --source=src/idelium -m unittest discover -s tests
-          coverage report --fail-under=25
+          coverage report --fail-under=27
           coverage xml -o coverage.xml
 
       - name: Build package
-        run: python -m build
+        run: |
+          check-manifest
+          python -m build
 
       - name: Verify wheel installation and CLI help
         run: |
