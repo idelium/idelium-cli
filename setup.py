@@ -99,7 +99,7 @@ setup(
         'dev': [
             'build>=1.2,<2',
             'check-manifest>=0.50,<1',
-            'mypy>=1.10,<2',
+            'mypy>=1.10,<3',
             'pip-audit>=2.7,<3',
             'ruff>=0.11,<1',
         ],
