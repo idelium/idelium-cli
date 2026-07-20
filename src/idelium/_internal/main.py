@@ -67,3 +67,4 @@ def main(args: Optional[List[str]] = None) -> int:
          start_test(cl_params)
     else:
         start_server(cl_params)
+    return 0

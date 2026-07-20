@@ -1,15 +1,15 @@
+"""Public package metadata for Idelium CLI."""
+
 from typing import List, Optional
-import sys
+
+from idelium._internal.main import IDELIUM_VERSION
 
 
-__version__ = "23.1.2"
+__version__ = IDELIUM_VERSION
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    """This is an internal API only meant for use by pip's own console scripts.
-
-    For additional details, see https://github.com/pypa/pip/issues/7498.
-    """
+    """Run the Idelium CLI entry point and return its process exit code."""
     from idelium._internal.main import main as _main
 
-    sys.exit(_main())
+    return _main(args)

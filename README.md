@@ -290,6 +290,12 @@ TLS behavior, and error handling when those areas change.
 Run the same checks used by CI:
 
 ```bash
+scripts/test-package.sh
+```
+
+For the full release-quality gate, run:
+
+```bash
 python -m pip_audit
 ruff check src tests
 ruff format --check src/idelium/_internal/commons/connection.py src/idelium/_internal/thirdparties/ideliumpostman.py tests
