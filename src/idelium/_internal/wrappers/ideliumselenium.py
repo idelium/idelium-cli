@@ -27,6 +27,58 @@ from idelium._internal.commons.seleniumby import SelBy
 printer = InitPrinter()
 class IdeliumSelenium:
     ''' IdeliumSelenium '''
+    SELENIUM_GENERIC_COMMANDS = {
+        "accept_alert",
+        "add_cookie",
+        "back",
+        "delete_all_cookies",
+        "delete_cookie",
+        "dismiss_alert",
+        "element_state",
+        "execute_script",
+        "file_upload",
+        "forward",
+        "get_alert_text",
+        "get_cookie",
+        "get_cookies",
+        "get_title",
+        "get_url",
+        "navigate_to",
+        "new_window",
+        "refresh",
+        "shadow_find_element",
+        "switch_window",
+    }
+    SELENIUM_ACTIONS = {
+        "click",
+        "context_click",
+        "double_click",
+        "drag_and_drop",
+        "key_down",
+        "key_up",
+        "move_by_offset",
+        "move_to",
+        "pause",
+        "scroll_by",
+        "send_keys",
+    }
+
+    @staticmethod
+    def _selenium_capabilities(config):
+        """Return configured Selenium W3C capabilities."""
+        return (
+            config.get("seleniumGridCapabilities")
+            or config.get("json_config", {}).get("seleniumGridCapabilities")
+            or {}
+        )
+
+    @staticmethod
+    def _apply_selenium_capabilities(options, config):
+        """Apply user-provided Selenium W3C capabilities to browser options."""
+        for key, value in IdeliumSelenium._selenium_capabilities(config).items():
+            options.set_capability(key, value)
+        return options
+
     @staticmethod
     def _local_driver(factory, manager, options=None, service_class=None):
         """Create a Selenium 4 local driver and fall back to a system driver."""
@@ -198,6 +250,7 @@ class IdeliumSelenium:
                 if config["json_config"]["accept_self_certificate"] is True:
                     chrome_options.add_argument("ignore-certificate-errors")
                     chrome_options.accept_insecure_certs = True
+            self._apply_selenium_capabilities(chrome_options, config)
             try:
                 driver = self._local_driver(
                     webdriver.Chrome,
@@ -221,6 +274,7 @@ class IdeliumSelenium:
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
                     firefox_options.accept_insecure_certs = True
+            self._apply_selenium_capabilities(firefox_options, config)
             try:
                 driver = self._local_driver(
                     webdriver.Firefox,
@@ -262,6 +316,7 @@ class IdeliumSelenium:
                 edge_options.accept_insecure_certs = bool(
                     config["json_config"]["accept_self_certificate"]
                 )
+            self._apply_selenium_capabilities(edge_options, config)
             try:
                 driver = self._local_driver(
                     webdriver.Edge,
@@ -352,8 +407,7 @@ class IdeliumSelenium:
         options.accept_insecure_certs = bool(
             config["json_config"].get("accept_self_certificate", False)
         )
-        for key, value in (config.get("seleniumGridCapabilities") or {}).items():
-            options.set_capability(key, value)
+        IdeliumSelenium._apply_selenium_capabilities(options, config)
 
         return webdriver.Remote(command_executor=grid_url, options=options)
     @staticmethod
@@ -502,11 +556,15 @@ class IdeliumSelenium:
         if "xpath" in object_step:
             object_step["findBy"] = "XPATH"
             object_step["target"] = object_step["xpath"]
+        wait_seconds = object_step.get("waitSeconds", object_step.get("timeout", 20))
+        wait_condition = object_step.get("waitCondition", "presence")
         if (self.wait_for_next_step_real(
                 driver,
                 by.get_by(object_step["findBy"]),
                 object_step["target"],
                 object_step["note"],
+                wait_seconds,
+                wait_condition,
         ) == Result.KO):
             return {'returnCode': Result.KO}
         return {'returnCode': Result.OK}
@@ -516,14 +574,15 @@ class IdeliumSelenium:
                                 by,
                                 target,
                                 note,
-                                wait_seconds=20):
+                                wait_seconds=20,
+                                wait_condition="presence"):
         '''wait for next step'''
         failed = False
         
         try:
             print(note, end="->", flush=True)
             WebDriverWait(driver, wait_seconds).until(
-                EC.presence_of_element_located((by, target)))
+                self._expected_condition(driver, by, target, wait_condition))
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
@@ -534,6 +593,190 @@ class IdeliumSelenium:
                 printer.success("ok")
                 return Result.OK
             return Result.KO
+
+    @staticmethod
+    def _expected_condition(driver, by, target, wait_condition):
+        """Build a Selenium expected condition from an Idelium wait name."""
+        condition = str(wait_condition or "presence").lower()
+        locator = (by, target)
+        if condition in {"presence", "present", "exists"}:
+            return EC.presence_of_element_located(locator)
+        if condition in {"visible", "visibility"}:
+            return EC.visibility_of_element_located(locator)
+        if condition in {"clickable", "element_to_be_clickable"}:
+            return EC.element_to_be_clickable(locator)
+        if condition in {"url_contains", "url"}:
+            return EC.url_contains(target)
+        if condition == "url_to_be":
+            return EC.url_to_be(target)
+        if condition in {"title_contains", "title"}:
+            return EC.title_contains(target)
+        if condition == "title_is":
+            return EC.title_is(target)
+        if condition in {"frame", "frame_available"}:
+            return EC.frame_to_be_available_and_switch_to_it(locator)
+        if condition == "staleness":
+            return EC.staleness_of(driver.find_element(by, target))
+        raise ValueError("Unsupported Selenium wait condition: " + condition)
+
+    def selenium_command(self, driver, config, object_step):
+        """Execute an allow-listed generic Selenium WebDriver command."""
+        operation = object_step.get("operation") or object_step.get("command")
+        if operation not in self.SELENIUM_GENERIC_COMMANDS:
+            return {"returnCode": Result.KO, "error": "Unsupported Selenium command"}
+        try:
+            value = self._execute_selenium_command(driver, object_step, operation)
+            response = {"returnCode": Result.OK}
+            if value is not None:
+                response["value"] = value
+            return response
+        except BaseException as err:
+            printer.danger("Idelium Selenium | command failed:" + operation)
+            print(err)
+            return {"returnCode": Result.KO}
+
+    def _execute_selenium_command(self, driver, object_step, operation):
+        """Dispatch a validated generic Selenium WebDriver operation."""
+        if operation == "navigate_to":
+            driver.get(object_step["url"])
+            return None
+        if operation == "back":
+            driver.back()
+            return None
+        if operation == "forward":
+            driver.forward()
+            return None
+        if operation == "refresh":
+            driver.refresh()
+            return None
+        if operation == "get_url":
+            return driver.current_url
+        if operation == "get_title":
+            return driver.title
+        if operation == "execute_script":
+            return driver.execute_script(
+                object_step["script"],
+                *object_step.get("args", []),
+            )
+        if operation == "add_cookie":
+            driver.add_cookie(object_step["cookie"])
+            return None
+        if operation == "get_cookie":
+            return driver.get_cookie(object_step["name"])
+        if operation == "get_cookies":
+            return driver.get_cookies()
+        if operation == "delete_cookie":
+            driver.delete_cookie(object_step["name"])
+            return None
+        if operation == "delete_all_cookies":
+            driver.delete_all_cookies()
+            return None
+        if operation == "accept_alert":
+            driver.switch_to.alert.accept()
+            return None
+        if operation == "dismiss_alert":
+            driver.switch_to.alert.dismiss()
+            return None
+        if operation == "get_alert_text":
+            return driver.switch_to.alert.text
+        if operation == "switch_window":
+            driver.switch_to.window(object_step["handle"])
+            return None
+        if operation == "new_window":
+            driver.switch_to.new_window(object_step.get("windowType", "tab"))
+            return None
+        if operation == "element_state":
+            element = self._element_for_generic_command(driver, object_step)
+            state = object_step.get("state", "displayed")
+            if state == "enabled":
+                return element.is_enabled()
+            if state == "selected":
+                return element.is_selected()
+            return element.is_displayed()
+        if operation == "file_upload":
+            element = self._element_for_generic_command(driver, object_step)
+            element.send_keys(object_step["path"])
+            return None
+        if operation == "shadow_find_element":
+            host = self._element_for_generic_command(driver, object_step)
+            shadow_by = object_step.get("shadowFindBy", object_step.get("findBy", "css"))
+            shadow_target = object_step["shadowTarget"]
+            host.shadow_root.find_element(SelBy().get_by(shadow_by), shadow_target)
+            return None
+        raise ValueError("Unsupported Selenium command: " + operation)
+
+    @staticmethod
+    def _element_for_generic_command(driver, object_step):
+        """Find the element targeted by a generic Selenium command."""
+        by = SelBy()
+        if "xpath" in object_step:
+            return driver.find_element(by.get_by("XPATH"), object_step["xpath"])
+        return driver.find_element(
+            by.get_by(object_step["findBy"]),
+            object_step["target"],
+        )
+
+    def selenium_actions(self, driver, config, object_step):
+        """Execute an allow-listed Selenium W3C Actions chain."""
+        try:
+            chain = ActionChains(driver)
+            for action in object_step.get("actions", []):
+                action_type = action.get("type")
+                if action_type not in self.SELENIUM_ACTIONS:
+                    return {"returnCode": Result.KO, "error": "Unsupported Selenium action"}
+                self._apply_selenium_action(driver, chain, action)
+            chain.perform()
+            return {"returnCode": Result.OK}
+        except BaseException as err:
+            printer.danger("Idelium Selenium | actions failed")
+            print(err)
+            return {"returnCode": Result.KO}
+
+    def _apply_selenium_action(self, driver, chain, action):
+        """Apply a single validated action to the Selenium action chain."""
+        action_type = action["type"]
+        if action_type == "send_keys":
+            chain.send_keys(action["text"])
+        elif action_type == "key_down":
+            chain.key_down(action["key"])
+        elif action_type == "key_up":
+            chain.key_up(action["key"])
+        elif action_type == "move_by_offset":
+            chain.move_by_offset(action.get("x", 0), action.get("y", 0))
+        elif action_type == "scroll_by":
+            chain.scroll_by_amount(action.get("deltaX", 0), action.get("deltaY", 0))
+        elif action_type == "pause":
+            chain.pause(action.get("seconds", 0))
+        elif action_type == "drag_and_drop":
+            source = self._element_for_action(driver, action, "source")
+            target = self._element_for_action(driver, action, "target")
+            chain.drag_and_drop(source, target)
+        elif action_type in {"click", "double_click", "context_click", "move_to"}:
+            element = None
+            if "findBy" in action or "xpath" in action:
+                element = self._element_for_action(driver, action)
+            if action_type == "click":
+                chain.click(element)
+            elif action_type == "double_click":
+                chain.double_click(element)
+            elif action_type == "context_click":
+                chain.context_click(element)
+            else:
+                chain.move_to_element(element)
+
+    @staticmethod
+    def _element_for_action(driver, action, prefix=None):
+        """Find an action target element from direct or prefixed locator fields."""
+        by = SelBy()
+        def field(name):
+            if prefix is None:
+                return action.get(name)
+            return action.get(prefix + name[0].upper() + name[1:])
+
+        xpath = field("xpath")
+        if xpath:
+            return driver.find_element(by.get_by("XPATH"), xpath)
+        return driver.find_element(by.get_by(field("findBy")), field("target"))
 
     def command(self, command, driver, obj_config, object_step):
         ''' command '''
@@ -559,6 +802,8 @@ class IdeliumSelenium:
             "write_localstorage": self.write_localstorage,
             "screen_shot": self.screen_shot,
             "sleep": self.sleep,
+            "selenium_command": self.selenium_command,
+            "selenium_actions": self.selenium_actions,
         }
         if command in commands.keys():
             return commands[command](driver, obj_config, object_step)

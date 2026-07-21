@@ -222,6 +222,38 @@ configuration rather than the capabilities object. If Grid session creation
 fails, the CLI does not fall back to a local browser; the infrastructure failure
 remains visible to automation.
 
+BiDi-capable sessions can request a WebDriver BiDi endpoint by adding the W3C
+`webSocketUrl` capability. The same capability object is applied to Selenium
+Grid sessions and supported local browser options:
+
+```json
+{
+  "browser": "chrome",
+  "seleniumGridCapabilities": {
+    "webSocketUrl": true,
+    "se:name": "Idelium BiDi-ready test"
+  }
+}
+```
+
+The CLI only requests the capability; browser, driver, and Grid versions still
+decide whether a BiDi endpoint is actually returned.
+
+Explicit waits use Selenium expected conditions. Existing steps without a
+condition still wait for element presence. New steps may provide
+`waitCondition` and `waitSeconds` to wait for visibility, clickability, URL,
+title, frame availability, or element staleness without hard-coded sleeps.
+
+The `selenium_command` step exposes an allow-listed WebDriver command dispatcher
+for common operations such as navigation, JavaScript execution, cookies, alerts,
+windows/tabs, element state checks, file upload, and shadow DOM lookup. Unknown
+operations fail safely instead of falling through to arbitrary driver methods.
+
+The `selenium_actions` step exposes Selenium W3C Actions through an allow-listed
+chain for keyboard input, pointer moves/clicks, wheel scrolling, drag-and-drop,
+double-click, and context-click flows. Unsupported actions fail before the chain
+is performed.
+
 ## Appium execution
 
 Mobile environments can provide `isRealDevice`, `appiumServer`, and
@@ -241,6 +273,21 @@ normalizes common Appium extension capabilities such as `automationName`,
 `platformName`, `browserName`, and `webSocketUrl` are preserved. UiAutomator2,
 Espresso, and XCUITest options are selected from the normalized platform and
 automation name.
+
+Environments may also declare Appium infrastructure metadata:
+
+```json
+{
+  "appiumRequiredDrivers": ["uiautomator2"],
+  "appiumRequiredPlugins": ["images"],
+  "appiumMobileCommandsAllowed": ["customPluginCommand"]
+}
+```
+
+When driver metadata is present, the CLI verifies that the selected automation
+driver is declared before creating the session. A generic `appium_mobile_command`
+step can also declare `requiredPlugin`; the command fails before execution if
+that plugin is not listed in the environment metadata.
 
 Idelium normalizes Appium command results before reporting them to the API. A
 command that returns a raw driver value is treated as successful and the value is

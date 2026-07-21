@@ -66,6 +66,11 @@ class IdeliumAppium():
         "xcodeOrgId",
         "xcodeSigningId",
     }
+    APPIUM_DRIVER_ALIASES = {
+        "espresso": "espresso",
+        "uiautomator2": "uiautomator2",
+        "xcuitest": "xcuitest",
+    }
 
     @staticmethod
     def _result(return_code=Result.OK, **kwargs):
@@ -92,9 +97,7 @@ class IdeliumAppium():
             config.get("appiumDesiredCaps") or {},
         )
         platform = str(capabilities.get("platformName", "")).lower()
-        automation_name = str(
-            capabilities.get("appium:automationName", capabilities.get("automationName", "")),
-        ).lower()
+        automation_name = IdeliumAppium._selected_driver_name(capabilities)
         if platform == "ios" or automation_name == "xcuitest":
             return XCUITestOptions().load_capabilities(capabilities)
         if automation_name == "espresso":
@@ -113,6 +116,56 @@ class IdeliumAppium():
             else:
                 normalized[key] = value
         return normalized
+
+    @classmethod
+    def _selected_driver_name(cls, capabilities):
+        """Return the normalized Appium automation driver name."""
+        automation_name = str(
+            capabilities.get("appium:automationName", capabilities.get("automationName", "")),
+        ).lower()
+        return cls.APPIUM_DRIVER_ALIASES.get(automation_name, automation_name)
+
+    @classmethod
+    def _metadata_list(cls, config, name):
+        """Read Appium environment metadata from the root or json_config."""
+        values = []
+        for source in (config, config.get("json_config", {})):
+            source_value = source.get(name)
+            if source_value is None:
+                continue
+            if isinstance(source_value, str):
+                values.append(source_value)
+            elif isinstance(source_value, list):
+                values.extend(source_value)
+        return [str(value).lower() for value in values if str(value).strip()]
+
+    @classmethod
+    def _validate_appium_environment_metadata(cls, config):
+        """Validate declared Appium driver and plugin requirements."""
+        capabilities = cls._normalize_appium_capabilities(
+            config.get("appiumDesiredCaps") or {},
+        )
+        selected_driver = cls._selected_driver_name(capabilities)
+        required_drivers = cls._metadata_list(config, "appiumRequiredDrivers")
+        if required_drivers and selected_driver and selected_driver not in required_drivers:
+            return cls._result(
+                Result.KO,
+                error=(
+                    "Appium required driver metadata does not include "
+                    + selected_driver
+                ),
+            )
+        return cls._result(Result.OK)
+
+    @classmethod
+    def _has_declared_appium_plugin(cls, config, plugin_name):
+        """Return whether an Appium plugin is declared in environment metadata."""
+        if not plugin_name:
+            return True
+        normalized = str(plugin_name).lower()
+        declared_plugins = set(cls._metadata_list(config, "appiumRequiredPlugins"))
+        declared_plugins.update(cls._metadata_list(config, "appiumInstalledPlugins"))
+        return normalized in declared_plugins
 
     @staticmethod
     def _find_element(driver, config, object_step):
@@ -160,6 +213,10 @@ class IdeliumAppium():
             print ('try to connect:' + config['appiumServer'])
         print (object_step['note'],end="->", flush=True)
         try:
+            metadata_result = IdeliumAppium._validate_appium_environment_metadata(config)
+            if metadata_result["returnCode"] == Result.KO:
+                printer.danger(metadata_result["error"])
+                return {"driver": driver, "config": config, "returnCode": Result.KO}
             try:
                 driver = webdriver.Remote(
                     config['appiumServer'],
@@ -279,6 +336,12 @@ class IdeliumAppium():
             return self._result(
                 Result.KO,
                 error="Appium mobile command parameters contain sensitive fields",
+            )
+        required_plugin = object_step.get("requiredPlugin")
+        if not self._has_declared_appium_plugin(config, required_plugin):
+            return self._result(
+                Result.KO,
+                error="Required Appium plugin is not declared in environment metadata",
             )
         return driver.execute_script("mobile: " + mobile_command, params)
 

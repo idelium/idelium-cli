@@ -15,6 +15,7 @@ class SeleniumGridTest(unittest.TestCase):
             "seleniumGridCapabilities": {
                 "platformName": "linux",
                 "se:name": "Idelium test",
+                "webSocketUrl": True,
             },
             "json_config": {
                 "browser": "chrome",
@@ -53,6 +54,7 @@ class SeleniumGridTest(unittest.TestCase):
         self.assertEqual("chrome", capabilities["browserName"])
         self.assertEqual("linux", capabilities["platformName"])
         self.assertEqual("Idelium test", capabilities["se:name"])
+        self.assertTrue(capabilities["webSocketUrl"])
         driver.set_window_size.assert_called_once_with(1280, 720)
         driver.get.assert_called_once_with("https://application.example.test")
 
@@ -86,6 +88,7 @@ class SeleniumGridTest(unittest.TestCase):
         options = chrome.call_args.kwargs["options"]
         capabilities = options.to_capabilities()
         self.assertTrue(capabilities["acceptInsecureCerts"])
+        self.assertTrue(capabilities["webSocketUrl"])
         self.assertIn("goog:chromeOptions", capabilities)
 
     def test_command_line_grid_settings_override_environment_settings(self):

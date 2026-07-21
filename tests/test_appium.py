@@ -80,6 +80,54 @@ class AppiumTranslationTest(unittest.TestCase):
         self.assertEqual("XCUITest", capabilities["appium:automationName"])
         self.assertEqual("iPhone", capabilities["appium:deviceName"])
 
+    def test_declared_driver_metadata_accepts_selected_driver(self):
+        result = IdeliumAppium._validate_appium_environment_metadata(
+            {
+                "appiumDesiredCaps": {
+                    "platformName": "Android",
+                    "automationName": "UiAutomator2",
+                },
+                "appiumRequiredDrivers": ["uiautomator2"],
+            },
+        )
+
+        self.assertEqual(Result.OK, result["returnCode"])
+
+    def test_declared_driver_metadata_rejects_missing_selected_driver(self):
+        result = IdeliumAppium._validate_appium_environment_metadata(
+            {
+                "appiumDesiredCaps": {
+                    "platformName": "Android",
+                    "automationName": "Espresso",
+                },
+                "appiumRequiredDrivers": ["uiautomator2"],
+            },
+        )
+
+        self.assertEqual(Result.KO, result["returnCode"])
+
+    def test_connect_appium_stops_before_session_when_driver_metadata_is_invalid(self):
+        wrapper = IdeliumAppium()
+
+        result = wrapper.connect_appium(
+            None,
+            {
+                "appiumServer": "http://127.0.0.1:4723",
+                "appiumDesiredCaps": {
+                    "platformName": "Android",
+                    "automationName": "Espresso",
+                },
+                "appiumRequiredDrivers": ["uiautomator2"],
+                "is_debug": False,
+                "ideliumServer": True,
+                "json_step": {"attachScreenshot": True, "failedExit": True},
+            },
+            {"note": "connect"},
+        )
+
+        self.assertEqual(Result.KO, result["returnCode"])
+        self.assertIsNone(result["driver"])
+
     def test_command_normalizes_raw_driver_values(self):
         driver = Mock()
         driver.current_package = "org.idelium.demo"
@@ -161,6 +209,50 @@ class AppiumTranslationTest(unittest.TestCase):
             "mobile: customPluginCommand",
             {},
         )
+
+    def test_mobile_command_requires_declared_plugin_when_requested(self):
+        driver = Mock()
+        wrapper = IdeliumAppium()
+
+        result = wrapper.command(
+            "appium_mobile_command",
+            driver,
+            {
+                "json_config": {
+                    "appiumMobileCommandsAllowed": ["customPluginCommand"],
+                    "appiumRequiredPlugins": ["images"],
+                },
+            },
+            {
+                "mobileCommand": "customPluginCommand",
+                "requiredPlugin": "images",
+                "params": {},
+            },
+        )
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        driver.execute_script.assert_called_once_with(
+            "mobile: customPluginCommand",
+            {},
+        )
+
+    def test_mobile_command_rejects_missing_required_plugin_metadata(self):
+        driver = Mock()
+        wrapper = IdeliumAppium()
+
+        result = wrapper.command(
+            "appium_mobile_command",
+            driver,
+            {"json_config": {"appiumMobileCommandsAllowed": ["customPluginCommand"]}},
+            {
+                "mobileCommand": "customPluginCommand",
+                "requiredPlugin": "images",
+                "params": {},
+            },
+        )
+
+        self.assertEqual(Result.KO, result["returnCode"])
+        driver.execute_script.assert_not_called()
 
     def test_mobile_command_rejects_unlisted_command(self):
         driver = Mock()
