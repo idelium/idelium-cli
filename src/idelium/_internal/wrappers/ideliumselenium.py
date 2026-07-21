@@ -12,9 +12,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from webdriver_manager.microsoft import IEDriverManager
-from selenium.webdriver.chrome import service
 from webdriver_manager.opera import OperaDriverManager
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.ie.service import Service as IeService
 from selenium.webdriver.common.action_chains import ActionChains
 from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.resultenum import Result
@@ -26,70 +28,130 @@ printer = InitPrinter()
 class IdeliumSelenium:
     ''' IdeliumSelenium '''
     @staticmethod
+    def _local_driver(factory, manager, options=None, service_class=None):
+        """Create a Selenium 4 local driver and fall back to a system driver."""
+        try:
+            if manager is not None and service_class is not None:
+                return factory(service=service_class(manager().install()), options=options)
+            if options is not None:
+                return factory(options=options)
+            return factory()
+        except BaseException:
+            printer.warning("webdriver not found, try locally")
+            if options is not None:
+                return factory(options=options)
+            return factory()
+
+    @staticmethod
     def sleep(driver, config, object_step):
         ''' Sleep '''
         time.sleep(object_step["seconds"])
         return {'returnCode': Result.OK}
 
-    def wait_and_click(self,driver, xpath_condition, note):
+    def wait_and_click(self,driver, config, object_step):
         ''' wait and click '''
-        if self.wait_for_next_step_real(driver, xpath_condition,
-                                        note) == Result.OK:
-            if self.click_xpath(driver, xpath_condition, note) == Result.KO:
-                return {'returnCode': Result.KO}
-            else:
-                return {'returnCode': Result.OK}
-        else:
-            return {'returnCode': Result.OK}
+        wait_result = self.wait_for_next_step(driver, config, object_step)
+        if wait_result['returnCode'] == Result.KO:
+            return wait_result
+        return self.click(driver, config, object_step)
 
     @staticmethod
-    def find_element_by_xpath(driver, xpath_condition, note=None):
+    def find_element_by_xpath(driver, config, object_step):
         ''' find element by xpath condition '''
-        return driver.find_element_by_xpath(xpath_condition)
+        try:
+            driver.find_element(SelBy().get_by("XPATH"), object_step["xpath"])
+            return {'returnCode': Result.OK}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return {'returnCode': Result.KO}
     @staticmethod
-    def find_elements_by_xpath(self, driver, xpath_condition, note=None):
+    def find_elements_by_xpath(driver, config, object_step):
         '''find elements by xpath condition'''
-        return driver.find_elements_by_xpath(xpath_condition)
+        try:
+            elements = driver.find_elements(SelBy().get_by("XPATH"), object_step["xpath"])
+            return {'returnCode': Result.OK if len(elements) > 0 else Result.KO}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return {'returnCode': Result.KO}
     @staticmethod
-    def find_element(driver, by, target, note=None):
+    def find_element(driver, config, object_step):
         ''' find element'''
-        return driver.find_element(by, target)
+        try:
+            driver.find_element(SelBy().get_by(object_step["findBy"]), object_step["target"])
+            return {'returnCode': Result.OK}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return {'returnCode': Result.KO}
     @staticmethod
-    def find_elements(driver, by, target, note=None):
+    def find_elements(driver, config, object_step):
         ''' find elements'''
-        return driver.find_elements(by, target)
+        try:
+            elements = driver.find_elements(
+                SelBy().get_by(object_step["findBy"]),
+                object_step["target"],
+            )
+            return {'returnCode': Result.OK if len(elements) > 0 else Result.KO}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return {'returnCode': Result.KO}
     @staticmethod
-    def page_source(driver, note=None):
+    def page_source(driver, config, object_step):
         ''' page source for debug is useful '''
-        return driver.page_source
+        print(driver.page_source)
+        return {'returnCode': Result.OK, 'value': driver.page_source}
     @staticmethod
-    def switch_to_frame(driver, object_driver, note=None):
+    def switch_to_frame(driver, config, object_step):
         ''' switch_to_frame '''
-        driver.switch_to_frame(object_driver)
-        return Result.OK
+        try:
+            by = SelBy()
+            if "xpath" in object_step:
+                frame = driver.find_element(by.get_by("XPATH"), object_step["xpath"])
+            else:
+                frame = driver.find_element(
+                    by.get_by(object_step["findBy"]),
+                    object_step["target"],
+                )
+            driver.switch_to.frame(frame)
+            return {'returnCode': Result.OK}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return {'returnCode': Result.KO}
     @staticmethod
-    def switch_to_default_content(driver, object, note=None):
+    def switch_to_default_content(driver, config, object_step):
         ''' switch_to_default_content '''
-        driver.switch_to_default_content()
-        return Result.OK
+        driver.switch_to.default_content()
+        return {'returnCode': Result.OK}
     @staticmethod
-    def find_object_element(self, selenium_object, xpath_condition, note=None):
+    def find_object_element(driver, config, object_step):
         ''' find_object_element '''
-        return selenium_object.find_element_by_xpath(xpath_condition)
+        return IdeliumSelenium.find_element_by_xpath(driver, config, object_step)
     @staticmethod
-    def click_object(selenium_object, note):
+    def click_object(driver, config, object_step):
         ''' click_object '''
         try:
-            print(note, end="->", flush=True)
+            print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            selenium_object.click()
+            by = SelBy()
+            if "xpath" in object_step:
+                element = driver.find_element(by.get_by("XPATH"), object_step["xpath"])
+            else:
+                element = driver.find_element(
+                    by.get_by(object_step["findBy"]),
+                    object_step["target"],
+                )
+            element.click()
             printer.success("ok")
-            return Result.OK
+            return {'returnCode': Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return Result.KO
+            return {'returnCode': Result.KO}
     @staticmethod
     def drag_and_drop(driver, config, object_step):
         ''' drag_and_drop '''    
@@ -135,39 +197,43 @@ class IdeliumSelenium:
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
                     chrome_options.add_argument("ignore-certificate-errors")
+                    chrome_options.accept_insecure_certs = True
             try:
-                driver = webdriver.Chrome(ChromeDriverManager().install())
+                driver = self._local_driver(
+                    webdriver.Chrome,
+                    ChromeDriverManager,
+                    chrome_options,
+                    ChromeService,
+                )
             except BaseException as err:
-                
-                printer.warning("webdriver not found, try locally")
-                try: 
-                    driver=webdriver.Chrome()
-                except:
-                    printer.danger("webriver error")
-                    print(
-                        "probably you need to download mannualy the webdriver\nfrom https://googlechromelabs.github.io/chrome-for-testing")
-                    if config['ideliumServer'] is False:
-                        return_code = Result.KO
-                        sys.exit(1)
+                printer.danger("webdriver error")
+                print(
+                    "probably you need to download manually the webdriver\nfrom https://googlechromelabs.github.io/chrome-for-testing")
+                if config['ideliumServer'] is False:
+                    return_code = Result.KO
+                    sys.exit(1)
+                return_code = Result.KO
         elif config["json_config"]["browser"] == "firefox":
-            profile = webdriver.FirefoxProfile()
+            firefox_options = webdriver.FirefoxOptions()
             if config["useragent"] is not None:
-                profile.set_preference("general.useragent.override",
-                                       config["useragent"])
+                firefox_options.set_preference("general.useragent.override",
+                                               config["useragent"])
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
-                    profile.accept_untrusted_certs = True
+                    firefox_options.accept_insecure_certs = True
             try:
-                driver = webdriver.Firefox(GeckoDriverManager().install())
+                driver = self._local_driver(
+                    webdriver.Firefox,
+                    GeckoDriverManager,
+                    firefox_options,
+                    FirefoxService,
+                )
             except BaseException as err:
-                printer.warning("webdriver not found, try locally")
-                try:
-                    driver = webdriver.Firefox()
-                except:
-                    printer.danger("webriver error")
-                    if config['ideliumServer'] is False:
-                        return_code = Result.KO
-                        sys.exit(1)
+                printer.danger("webdriver error")
+                if config['ideliumServer'] is False:
+                    return_code = Result.KO
+                    sys.exit(1)
+                return_code = Result.KO
         elif config["json_config"]["browser"] == "safari":
             try:
                 driver = webdriver.Safari()
@@ -179,7 +245,7 @@ class IdeliumSelenium:
                     sys.exit(1)
         elif config["json_config"]["browser"] == "opera":
             try:
-                webdriver_service = service.Service(OperaDriverManager().install())
+                webdriver_service = ChromeService(OperaDriverManager().install())
                 webdriver_service.start()
                 driver = webdriver.Remote(webdriver_service.service_url, webdriver.DesiredCapabilities.OPERA)
             except BaseException as err:
@@ -189,33 +255,44 @@ class IdeliumSelenium:
                 if config['ideliumServer'] is False:
                     sys.exit(1)
         elif config["json_config"]["browser"] == "edge":
+            edge_options = webdriver.EdgeOptions()
+            if config["useragent"] is not None:
+                edge_options.add_argument("user-agent=" + config["useragent"])
+            if "accept_self_certificate" in config["json_config"]:
+                edge_options.accept_insecure_certs = bool(
+                    config["json_config"]["accept_self_certificate"]
+                )
             try:
-                driver = webdriver.Edge(EdgeChromiumDriverManager().install())
+                driver = self._local_driver(
+                    webdriver.Edge,
+                    EdgeChromiumDriverManager,
+                    edge_options,
+                    EdgeService,
+                )
             except BaseException as err:
-                printer.warning("webdriver not found, try locally")
-                try:
-                    driver = webdriver.Edge()
-                except:
-                    printer.danger("webriver error")
-                    if config['ideliumServer'] is False:
-                        return_code = Result.KO
-                        sys.exit(1)
+                printer.danger("webdriver error")
+                if config['ideliumServer'] is False:
+                    return_code = Result.KO
+                    sys.exit(1)
+                return_code = Result.KO
         elif config["json_config"]["browser"] == "iexplorer":
             capabilities = webdriver.DesiredCapabilities().INTERNETEXPLORER
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
                     capabilities["acceptSslCerts"] = True
             try:
-                driver=webdriver.Ie(IEDriverManager().install())
+                driver = self._local_driver(
+                    webdriver.Ie,
+                    IEDriverManager,
+                    None,
+                    IeService,
+                )
             except BaseException as err:
-                printer.warning("webdriver not found, try locally")
-                try:
-                    driver = webdriver.Ie()
-                except:
-                    printer.danger("webriver error")
-                    if config['ideliumServer'] is False:
-                        return_code = Result.KO
-                        sys.exit(1)
+                printer.danger("webdriver error")
+                if config['ideliumServer'] is False:
+                    return_code = Result.KO
+                    sys.exit(1)
+                return_code = Result.KO
         else:
             printer.danger("driver not selected")
             if config['ideliumServer'] is False:
@@ -467,8 +544,8 @@ class IdeliumSelenium:
             "wait_for_next_step_real": self.wait_for_next_step_real,
             "find_element_by_xpath": self.find_element_by_xpath,
             "find_elements_by_xpath": self.find_elements_by_xpath,
-            "find_element": self.find_element_by_xpath,
-            "find_elements": self.find_elements_by_xpath,
+            "find_element": self.find_element,
+            "find_elements": self.find_elements,
             "page_source": self.page_source,
             "switch_to_frame": self.switch_to_frame,
             "switch_to_default_content": self.switch_to_default_content,

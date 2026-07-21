@@ -66,6 +66,28 @@ class SeleniumGridTest(unittest.TestCase):
 
         remote.assert_not_called()
 
+    @patch("idelium._internal.wrappers.ideliumselenium.ChromeDriverManager")
+    @patch("idelium._internal.wrappers.ideliumselenium.webdriver.Chrome")
+    def test_local_chrome_uses_selenium_4_options(self, chrome, manager):
+        driver = Mock()
+        chrome.return_value = driver
+        manager.return_value.install.return_value = "/drivers/chromedriver"
+        wrapper = IdeliumSelenium()
+        wrapper.wait_for_next_step = Mock(return_value={"returnCode": Result.OK})
+        config = self.config()
+        config["seleniumGridUrl"] = None
+        config["device"] = "Nexus 5"
+        config["json_config"]["accept_self_certificate"] = True
+
+        result = wrapper.open_browser(None, config, {})
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        chrome.assert_called_once()
+        options = chrome.call_args.kwargs["options"]
+        capabilities = options.to_capabilities()
+        self.assertTrue(capabilities["acceptInsecureCerts"])
+        self.assertIn("goog:chromeOptions", capabilities)
+
     def test_command_line_grid_settings_override_environment_settings(self):
         loader = InitIdelium()
         printer = Mock()

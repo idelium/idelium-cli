@@ -234,6 +234,25 @@ requirements.
 The execution host is responsible for Appium, the appropriate platform driver,
 SDKs, signing configuration, and access to the device or emulator.
 
+The CLI accepts legacy unprefixed Appium capability names for compatibility and
+normalizes common Appium extension capabilities such as `automationName`,
+`deviceName`, `app`, `bundleId`, and `newCommandTimeout` to their W3C
+`appium:` names before creating the session. Standard W3C capabilities such as
+`platformName`, `browserName`, and `webSocketUrl` are preserved. UiAutomator2,
+Espresso, and XCUITest options are selected from the normalized platform and
+automation name.
+
+Idelium normalizes Appium command results before reporting them to the API. A
+command that returns a raw driver value is treated as successful and the value is
+kept in the local command response; driver exceptions fail the Idelium step.
+
+For Appium 2 driver- or plugin-specific extensions, use the
+`appium_mobile_command` step. It executes `mobile:*` commands only when the
+command is part of the built-in safe allow-list or explicitly listed in
+`appiumMobileCommandsAllowed` in the environment configuration. Parameters named
+like credentials, tokens, cookies, or authorization headers are rejected before
+execution so they are not passed through generic command artifacts.
+
 ## Postman Collection execution
 
 Idelium executes Postman Collection v2.1 requests, including requests inside
@@ -251,6 +270,13 @@ Certificate verification and finite timeouts apply to collection requests too.
 An uploaded execution object may set `insecure` only for an explicit development
 run and produces a warning. Stored results redact common credential fields in
 JSON bodies and sensitive URL query parameters.
+
+This runner intentionally does not execute arbitrary Postman scripts. It does
+not run `pm.test`, pre-request scripts, post-response scripts, or dynamic
+collection/environment mutations. Use Newman outside Idelium when full Postman
+runtime compatibility is required; use the built-in runner when deterministic
+request execution, saved-example assertions, redaction, and Idelium result
+reporting are preferred.
 
 ## Server mode
 

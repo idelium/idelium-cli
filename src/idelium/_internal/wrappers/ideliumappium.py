@@ -4,12 +4,131 @@ import sys
 import time
 import base64
 from appium import webdriver
+from appium.options.android import EspressoOptions
+from appium.options.android import UiAutomator2Options
+from appium.options.ios import XCUITestOptions
+from selenium.webdriver.common.by import By
 from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.androideventkey import EventKey
 from idelium._internal.commons.resultenum import Result
 
 class IdeliumAppium():
     ''' Idelium Appium'''
+    SAFE_MOBILE_COMMANDS = {
+        "batteryInfo",
+        "deviceInfo",
+        "getDeviceTime",
+        "getNotifications",
+        "listSms",
+        "viewportScreenshot",
+    }
+    SENSITIVE_PARAMETER_NAMES = {
+        "api_key",
+        "apikey",
+        "authorization",
+        "cookie",
+        "password",
+        "secret",
+        "token",
+        "access_key",
+        "accesskey",
+    }
+    STANDARD_W3C_CAPABILITIES = {
+        "acceptInsecureCerts",
+        "browserName",
+        "browserVersion",
+        "pageLoadStrategy",
+        "platformName",
+        "proxy",
+        "setWindowRect",
+        "strictFileInteractability",
+        "timeouts",
+        "unhandledPromptBehavior",
+        "webSocketUrl",
+    }
+    APPIUM_EXTENSION_CAPABILITIES = {
+        "app",
+        "appActivity",
+        "appPackage",
+        "autoGrantPermissions",
+        "automationName",
+        "bundleId",
+        "chromedriverExecutable",
+        "deviceName",
+        "fullReset",
+        "language",
+        "locale",
+        "newCommandTimeout",
+        "noReset",
+        "orientation",
+        "platformVersion",
+        "udid",
+        "xcodeOrgId",
+        "xcodeSigningId",
+    }
+
+    @staticmethod
+    def _result(return_code=Result.OK, **kwargs):
+        """Build the standard Idelium command response."""
+        response = {"returnCode": return_code}
+        response.update(kwargs)
+        return response
+
+    @staticmethod
+    def _normalize_result(value):
+        """Normalize Appium driver values to the manager command contract."""
+        if isinstance(value, dict) and "returnCode" in value:
+            return value
+        if value == Result.KO:
+            return {"returnCode": Result.KO}
+        if value in (Result.OK, None):
+            return {"returnCode": Result.OK}
+        return {"returnCode": Result.OK, "value": value}
+
+    @staticmethod
+    def _appium_options(config):
+        """Create Appium client options from the stored environment capabilities."""
+        capabilities = IdeliumAppium._normalize_appium_capabilities(
+            config.get("appiumDesiredCaps") or {},
+        )
+        platform = str(capabilities.get("platformName", "")).lower()
+        automation_name = str(
+            capabilities.get("appium:automationName", capabilities.get("automationName", "")),
+        ).lower()
+        if platform == "ios" or automation_name == "xcuitest":
+            return XCUITestOptions().load_capabilities(capabilities)
+        if automation_name == "espresso":
+            return EspressoOptions().load_capabilities(capabilities)
+        return UiAutomator2Options().load_capabilities(capabilities)
+
+    @classmethod
+    def _normalize_appium_capabilities(cls, capabilities):
+        """Return Appium 2 compatible W3C capabilities."""
+        normalized = {}
+        for key, value in capabilities.items():
+            if ":" in key or key in cls.STANDARD_W3C_CAPABILITIES:
+                normalized[key] = value
+            elif key in cls.APPIUM_EXTENSION_CAPABILITIES:
+                normalized["appium:" + key] = value
+            else:
+                normalized[key] = value
+        return normalized
+
+    @staticmethod
+    def _find_element(driver, config, object_step):
+        """Find an Appium element with modern Selenium/Appium locators."""
+        if 'xpath' in object_step:
+            return driver.find_element(By.XPATH, object_step['xpath'])
+        if 'accessibilityId' in object_step:
+            return driver.find_element("accessibility id", object_step['accessibilityId'])
+        if 'native_interface_element' in object_step:
+            native_interface_element = (
+                config['appiumDesiredCaps']['appPackage'] + ":id/" +
+                object_step['native_interface_element']
+            )
+            return driver.find_element(By.ID, native_interface_element)
+        return None
+
     @staticmethod
     def wait_for_elements(driver,config, object_step):
         ''' wait for elements'''
@@ -25,13 +144,7 @@ class IdeliumAppium():
                 print ('timeout exception')
                 break
             try:
-                if 'xpath' in object_step:
-                    element = driver.find_element_by_xpath(
-                        object_step['xpath'])
-                elif 'native_interface_element' in object_step:
-                    native_interface_element=config['appiumDesiredCaps']['appPackage'] + ":id/"
-                    + object_step['native_interface_element']
-                    element = driver.find_element_by_id(native_interface_element)
+                element = IdeliumAppium._find_element(driver, config, object_step)
                 break
             except BaseException as err:
                 print ('still waiting')
@@ -47,9 +160,16 @@ class IdeliumAppium():
             print ('try to connect:' + config['appiumServer'])
         print (object_step['note'],end="->", flush=True)
         try:
-            driver = webdriver.Remote(config['appiumServer'],
-                                      config['appiumDesiredCaps'],
-                                      keep_alive=False)
+            try:
+                driver = webdriver.Remote(
+                    config['appiumServer'],
+                    options=IdeliumAppium._appium_options(config),
+                    keep_alive=False,
+                )
+            except TypeError:
+                driver = webdriver.Remote(config['appiumServer'],
+                                          config['appiumDesiredCaps'],
+                                          keep_alive=False)
             printer.success('ok')
             contexts=driver.contexts
             printer.warning ('Context name:')
@@ -77,7 +197,7 @@ class IdeliumAppium():
         if element is None:
             return_code=Result.KO
         else:
-            if config['json_config']['appiumDesiredCaps']['platformName'] == 'android':
+            if config['json_config']['appiumDesiredCaps']['platformName'].lower() == 'android':
                 element.click()
                 time.sleep(1)
                 event_key=EventKey()
@@ -131,12 +251,56 @@ class IdeliumAppium():
         return_code=Result.OK
         driver.execute_script(object_step['script'])
         return return_code
+
+    def appium_mobile_command(self,driver,config,object_step):
+        """Execute an allow-listed Appium mobile command."""
+        mobile_command = object_step.get("mobileCommand") or object_step.get("command")
+        if not mobile_command or not isinstance(mobile_command, str):
+            return self._result(Result.KO, error="mobileCommand is required")
+        if mobile_command.startswith("mobile:"):
+            mobile_command = mobile_command.split(":", 1)[1].strip()
+
+        allowed_commands = set(self.SAFE_MOBILE_COMMANDS)
+        for source in (config, config.get("json_config", {})):
+            allowed_commands.update(source.get("appiumMobileCommandsAllowed", []))
+        if mobile_command not in allowed_commands:
+            return self._result(
+                Result.KO,
+                error="Appium mobile command is not allow-listed",
+            )
+
+        params = object_step.get("params", {})
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return self._result(Result.KO, error="params must be an object")
+        unsafe_keys = self._sensitive_parameter_keys(params)
+        if unsafe_keys:
+            return self._result(
+                Result.KO,
+                error="Appium mobile command parameters contain sensitive fields",
+            )
+        return driver.execute_script("mobile: " + mobile_command, params)
+
+    @classmethod
+    def _sensitive_parameter_keys(cls, value):
+        """Return sensitive parameter keys found in nested dictionaries."""
+        if not isinstance(value, dict):
+            return set()
+        sensitive = set()
+        for key, child in value.items():
+            normalized = str(key).replace("-", "_").lower()
+            if normalized in cls.SENSITIVE_PARAMETER_NAMES:
+                sensitive.add(str(key))
+            sensitive.update(cls._sensitive_parameter_keys(child))
+        return sensitive
+
     def appium_desired_capabilities(self,driver,config,object_step):
         """
             for more info:
             https://appium.io/docs/en/commands/session/get/
         """
-        return driver.desired_capabilities()
+        return driver.desired_capabilities
     def appium_back(self,driver,config,object_step):
         """
             for more info:
@@ -183,23 +347,21 @@ class IdeliumAppium():
             https://appium.io/docs/en/commands/session/orientation/set-orientation/
         """
         return_code=Result.OK
-        driver.orientation(object_step['orientation'])
+        driver.orientation = object_step['orientation']
         return return_code
     def appium_location(self,driver,config,object_step):
         """
             for more info:
             https://appium.io/docs/en/commands/session/geolocation/get-geolocation/
         """
-        return driver.location()
-    def appium_orientation(self,driver,config,object_step):
-        """
-            orientation: LANDSCAPE,PORTRAIT
-            for more info:
-            https://appium.io/docs/en/commands/session/geolocation/set-geolocation/
-        """
-        return_code=Result.OK
-        driver.set_location(object_step['latitude'],object_step['ongitude'],object_step['altitude'])
-        return return_code
+        if {'latitude', 'longitude', 'altitude'}.issubset(object_step):
+            driver.set_location(
+                object_step['latitude'],
+                object_step['longitude'],
+                object_step['altitude'],
+            )
+            return Result.OK
+        return driver.location
     def appium_log_types(self,driver,config,object_step):
         """
             for more info:
@@ -226,13 +388,16 @@ class IdeliumAppium():
             for more info:
             https://appium.io/docs/en/commands/session/settings/get-settings/
         """
-        return driver.get_settings
+        return driver.get_settings()
     def start_start_activity(self,driver,config,object_step):
         """
             for more info:
             https://appium.io/docs/en/commands/device/activity/start-activity/
         """
-        return driver.start_activity(object_step['jsonActivityParameters'])
+        params = object_step['jsonActivityParameters']
+        if isinstance(params, dict):
+            return driver.start_activity(**params)
+        return driver.start_activity(params)
     def appium_current_activity(self,driver,config,object_step):
         """
             for more info:
@@ -242,18 +407,9 @@ class IdeliumAppium():
     def appium_current_package(self,driver,config,object_step):
         """
             for more info:
-            https://appium.io/docs/en/commands/device/app/install-app/
+            https://appium.io/docs/en/commands/device/app/current-package/
         """
-        printer=InitPrinter()
-        try:
-            driver.install_app(object_step['appPath'])
-            return Result.OK
-        except BaseException as err:
-            printer.danger('FAILED')
-            print(err)
-            if config['ideliumServer'] is False:
-                sys.exit(1)
-            return Result.KO
+        return driver.current_package
     def appium_is_app_installed(self,driver,config,object_step):
         """
             for more info:
@@ -519,9 +675,13 @@ class IdeliumAppium():
             https://appium.io/docs/en/commands/device/performance-data/get-performance-data/
         """
         return_code=Result.OK
+        read_timeout = object_step.get(
+            'dataReadTimeout',
+            object_step.get('dataReatTimeOut'),
+        )
         driver.get_performance_data(object_step['packageName'],
                                     object_step['dataType'],
-                                    object_step['dataReatTimeOut'])
+                                    read_timeout)
         return return_code
     def appium_get_performance_data_types(self,driver,config,object_step):
         """
@@ -614,11 +774,11 @@ class IdeliumAppium():
             for more info:
            https://appium.io/docs/en/commands/element/find-element/
         """
-        return driver.find_element_by_accessibility_id(object_step['accessibilityId'])
+        return self._find_element(driver, config, object_step)
     def appium_switch_to(self,driver,config,object_step):
         """
         """
-        return driver.switch_to()
+        return driver.switch_to
     def screen_shot(self,driver,file_name):
         """
                 screenshot appium
@@ -654,6 +814,7 @@ class IdeliumAppium():
                 "appium_click_xpath" : self.appium_click,
                 "appium_switch_context" : self.appium_switch_context,
                 "appium_execute_script" : self.appium_execute_script,
+                "appium_mobile_command" : self.appium_mobile_command,
                 "appium_desired_capabilities" : self.appium_desired_capabilities,
                 "appium_back" : self.appium_back,
                 "appium_page_source" : self.appium_page_source,
@@ -717,6 +878,11 @@ class IdeliumAppium():
                 "appium_switch_to" : self.appium_switch_to,
         }
         if command in commands.keys():
-            return commands[command](driver,obj_config,object_step)
+            try:
+                return self._normalize_result(commands[command](driver,obj_config,object_step))
+            except BaseException as err:
+                printer.danger('Idelium Appium | action failed:' + command)
+                print(err)
+                return self._result(Result.KO)
         printer.danger ('Idelium Appium | action not found:' + command)
         return None
