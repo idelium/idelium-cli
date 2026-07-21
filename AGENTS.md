@@ -25,6 +25,14 @@ These rules extend the workspace-level Idelium engineering directives.
 8. **Maintain supported Python metadata.** Keep `python_requires`, classifiers,
    documentation, and the CI version matrix aligned. Bound dependencies where an
    incompatible major upgrade could break execution.
+9. **Constrain generic runtime commands.** Generic Selenium, Appium, Postman, or
+   plugin command dispatch must use explicit allow-lists, runtime validation, and
+   safe failure responses. Do not pass arbitrary user payloads directly to a
+   driver or subprocess without redaction and compatibility checks.
+10. **Preserve Appium and Selenium compatibility boundaries.** Driver-specific
+    capabilities, Appium `mobile:*` extensions, Selenium Grid capabilities, and
+    BiDi-ready settings must remain backward compatible with existing Idelium
+    steps and include network-free boundary tests.
 
 ## Required verification
 
