@@ -68,3 +68,16 @@ class MetadataConsistencyTest(unittest.TestCase):
         self.assertIn("Apache License 2.0", readme)
         self.assertIn("include LICENSE", manifest)
         self.assertIn("Apache License", license_text)
+
+    def test_readme_uses_centralized_light_and_dark_logos(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("<picture>", readme)
+        self.assertIn(
+            "https://github.com/idelium/idelium-docker/raw/main/logo/idelium.png",
+            readme,
+        )
+        self.assertIn(
+            "https://github.com/idelium/idelium-docker/raw/main/logo/idelium_white.png",
+            readme,
+        )
