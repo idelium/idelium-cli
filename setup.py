@@ -29,7 +29,7 @@ setup(
     long_description_content_type="text/markdown",
     author='Idel Fuschini',  # Optional
     author_email='idel.fuschini@gmail.com',  # Optional
-    license='MIT',
+    license='Apache-2.0',
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

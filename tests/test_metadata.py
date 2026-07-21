@@ -57,3 +57,14 @@ class MetadataConsistencyTest(unittest.TestCase):
         self.assertTrue(script.exists())
         self.assertIn("scripts/test-package.sh", readme)
         self.assertIn("recursive-include scripts *.sh", manifest)
+
+    def test_project_license_metadata_is_apache_2(self):
+        setup_source = (ROOT / "setup.py").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+        license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+
+        self.assertIn("license='Apache-2.0'", setup_source)
+        self.assertIn("Apache License 2.0", readme)
+        self.assertIn("include LICENSE", manifest)
+        self.assertIn("Apache License", license_text)

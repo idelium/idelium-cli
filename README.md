@@ -430,6 +430,6 @@ request.
   full-stack environment.
 
 Idelium CLI is distributed under the
-[MIT License](https://github.com/idelium/idelium-cli/blob/main/LICENSE.txt).
+[Apache License 2.0](https://github.com/idelium/idelium-cli/blob/main/LICENSE).
 Project information is available on
 [GitHub](https://github.com/idelium/idelium-cli).
