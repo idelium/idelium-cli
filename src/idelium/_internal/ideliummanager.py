@@ -5,7 +5,10 @@ import importlib.util
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
 from idelium._internal.wrappers.ideliumappium import IdeliumAppium
-from idelium._internal.thirdparties.ideliumpostman import PostmanCollection
+from idelium._internal.thirdparties.ideliumpostman import (
+    PostmanCollection,
+    PostmanNewmanCollection,
+)
 
 class StartManager:
     ''' Start manager '''
@@ -51,7 +54,20 @@ class StartManager:
                     float(config.get("httpConnectTimeout", 5)),
                     float(config.get("httpReadTimeout", 30)),
                 )
-                postman=PostmanCollection(verify=verify, timeout=timeout)
+                postman_config = object_step.get("collection", {})
+                runtime = (
+                    object_step.get("postmanRuntime")
+                    or object_step.get("runtime")
+                    or postman_config.get("runtime")
+                    or postman_config.get("mode")
+                    or "postman_safe"
+                )
+                if runtime in {"newman", "postman_newman"}:
+                    postman = PostmanNewmanCollection(
+                        timeout=float(config.get("postmanNewmanTimeout", 300))
+                    )
+                else:
+                    postman=PostmanCollection(verify=verify, timeout=timeout)
                 postman_data=postman.start_postman_test(object_step['collection'],config["is_debug"])
                 typeOfStep='postman'
                 if any(not result['passed'] for result in postman_data):

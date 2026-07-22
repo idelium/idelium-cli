@@ -46,6 +46,7 @@ class InitIdelium():
     --insecure              disable TLS verification for development only
     --httpConnectTimeout    HTTP connection timeout in seconds (default 5)
     --httpReadTimeout       HTTP read timeout in seconds (default 30)
+    --postmanNewmanTimeout  Newman execution timeout in seconds (default 300)
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -116,6 +117,7 @@ class InitIdelium():
             'insecure': False,
             'httpConnectTimeout': 5,
             'httpReadTimeout': 30,
+            'postmanNewmanTimeout': 300,
             'count':0,
             'ideliumKey':None,
             'forcedownload':False,
@@ -200,10 +202,11 @@ class InitIdelium():
                 float(cl_params['httpConnectTimeout']),
                 float(cl_params['httpReadTimeout']),
             )
+            postman_newman_timeout = float(cl_params['postmanNewmanTimeout'])
         except (TypeError, ValueError):
             printer.danger('HTTP timeouts must be numbers')
             sys.exit(1)
-        if timeout[0] <= 0 or timeout[1] <= 0:
+        if timeout[0] <= 0 or timeout[1] <= 0 or postman_newman_timeout <= 0:
             printer.danger('HTTP timeouts must be greater than zero')
             sys.exit(1)
         Connection.configure(

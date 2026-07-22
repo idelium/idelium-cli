@@ -145,6 +145,7 @@ Options use `--name=value` unless shown as a flag.
 | `--insecure` | Disable TLS verification and print a warning | off |
 | `--httpConnectTimeout=<seconds>` | Connection timeout, greater than zero | `5` |
 | `--httpReadTimeout=<seconds>` | Response read timeout, greater than zero | `30` |
+| `--postmanNewmanTimeout=<seconds>` | Newman execution timeout, greater than zero | `300` |
 
 ### Server mode
 
@@ -302,9 +303,18 @@ execution so they are not passed through generic command artifacts.
 
 ## Postman Collection execution
 
-Idelium executes Postman Collection v2.1 requests, including requests inside
-nested folders. Collection variables are loaded first and enabled environment
-values override them.
+Idelium supports two Postman execution modes:
+
+- `postman_safe` is the default Python runner. It executes Postman Collection
+  v2.1 requests, including requests inside nested folders, without running
+  arbitrary scripts.
+- `postman_newman` is an optional Newman-backed runtime for full Postman
+  compatibility, including `pm.test`, pre-request scripts, test scripts,
+  variable mutation, collection variables, environment files, and iteration
+  data files.
+
+The safe runner loads collection variables first and enabled environment values
+override them.
 
 Saved response examples define assertions:
 
@@ -318,12 +328,49 @@ An uploaded execution object may set `insecure` only for an explicit development
 run and produces a warning. Stored results redact common credential fields in
 JSON bodies and sensitive URL query parameters.
 
-This runner intentionally does not execute arbitrary Postman scripts. It does
-not run `pm.test`, pre-request scripts, post-response scripts, or dynamic
-collection/environment mutations. Use Newman outside Idelium when full Postman
-runtime compatibility is required; use the built-in runner when deterministic
+The safe runner intentionally does not execute arbitrary Postman scripts. It
+does not run `pm.test`, pre-request scripts, post-response scripts, or dynamic
+collection/environment mutations. Use `postman_newman` when full Postman
+runtime compatibility is required; use `postman_safe` when deterministic
 request execution, saved-example assertions, redaction, and Idelium result
 reporting are preferred.
+
+### Newman runtime
+
+The Newman runtime is optional and requires the `newman` executable to be
+available on `PATH` on the machine running `idelium`. If Newman is missing, the
+step fails with a clear Idelium result instead of crashing the process. Use
+`--postmanNewmanTimeout=<seconds>` to bound Newman execution time.
+
+Use `postman_newman` in the uploaded Postman step payload:
+
+```json
+{
+  "stepType": "postman_collection",
+  "collection": {
+    "runtime": "postman_newman",
+    "collection": {
+      "info": { "name": "API smoke test" },
+      "item": []
+    },
+    "environment": {
+      "name": "dev",
+      "values": []
+    },
+    "iterationData": [
+      { "username": "demo" }
+    ]
+  }
+}
+```
+
+The CLI writes temporary collection, environment, and iteration-data files,
+runs Newman with the JSON reporter, and maps the report back to Idelium
+performed-step results. HTTP status, response body, timings, assertion
+failures, script failures, malformed reports, and Newman exit codes are mapped
+to pass/fail status. Sensitive URL query values and JSON fields such as tokens,
+cookies, passwords, secrets, sessions, and authorization values are redacted
+before results are stored.
 
 ## Server mode
 

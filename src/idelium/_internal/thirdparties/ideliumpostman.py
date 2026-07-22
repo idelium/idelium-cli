@@ -3,7 +3,11 @@
 from __future__ import absolute_import
 
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -300,3 +304,325 @@ class PostmanCollection:
             debug,
             postman.get("environment"),
         )
+
+
+class PostmanNewmanCollection:
+    """Run Postman collections through Newman and map reports to Idelium results."""
+
+    def __init__(
+        self,
+        newman_binary="newman",
+        binary_resolver=None,
+        subprocess_runner=None,
+        timeout=300,
+    ):
+        self.newman_binary = newman_binary
+        self.binary_resolver = binary_resolver or shutil.which
+        self.subprocess_runner = subprocess_runner or subprocess.run
+        self.timeout = timeout
+
+    @staticmethod
+    def _write_json(directory, name, value):
+        path = os.path.join(directory, name)
+        with open(path, "w", encoding="utf-8") as file_obj:
+            json.dump(value, file_obj)
+        return path
+
+    def _materialize_input(self, directory, postman, key, filename):
+        value = postman.get(key)
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        return self._write_json(directory, filename, value)
+
+    def _command(self, directory, postman, report_path):
+        binary = self.binary_resolver(self.newman_binary)
+        if not binary:
+            raise FileNotFoundError(self.newman_binary)
+
+        collection_path = self._materialize_input(
+            directory,
+            postman,
+            "collection",
+            "collection.json",
+        )
+        if not collection_path:
+            raise ValueError("A Postman collection is required for Newman execution.")
+
+        command = [
+            binary,
+            "run",
+            collection_path,
+            "--reporters",
+            "json",
+            "--reporter-json-export",
+            report_path,
+        ]
+
+        environment_path = self._materialize_input(
+            directory,
+            postman,
+            "environment",
+            "environment.json",
+        )
+        if environment_path:
+            command.extend(["--environment", environment_path])
+
+        data_path = self._materialize_input(
+            directory,
+            postman,
+            "iterationData",
+            "iteration-data.json",
+        )
+        if not data_path:
+            data_path = self._materialize_input(
+                directory,
+                postman,
+                "dataFile",
+                "iteration-data.json",
+            )
+        if data_path:
+            command.extend(["--iteration-data", data_path])
+
+        if postman.get("insecure", False):
+            command.append("--insecure")
+
+        return command
+
+    @staticmethod
+    def _request_method(request):
+        return str(request.get("method", "GET")).upper()
+
+    @staticmethod
+    def _request_url(request):
+        url = request.get("url", "")
+        if isinstance(url, dict):
+            return str(url.get("raw", ""))
+        return str(url)
+
+    @staticmethod
+    def _response_body(response):
+        if response is None:
+            return ""
+        body = response.get("stream", response.get("body", ""))
+        if isinstance(body, list):
+            try:
+                return bytes(body).decode("utf-8", errors="replace")
+            except ValueError:
+                return ""
+        if isinstance(body, dict):
+            data = body.get("data")
+            if isinstance(data, list):
+                try:
+                    return bytes(data).decode("utf-8", errors="replace")
+                except ValueError:
+                    return ""
+            return json.dumps(body, separators=(",", ":"))
+        if isinstance(body, bytes):
+            return body.decode("utf-8", errors="replace")
+        return str(body or "")
+
+    @staticmethod
+    def _response_status(response):
+        if response is None:
+            return "0"
+        return str(response.get("code", response.get("status", "0")))
+
+    @staticmethod
+    def _response_time(response):
+        if response is None:
+            return 0
+        return response.get("responseTime", response.get("response_time", 0)) or 0
+
+    @staticmethod
+    def _assertions(execution):
+        assertions = []
+        for assertion in execution.get("assertions") or []:
+            error = assertion.get("error")
+            skipped = assertion.get("skipped", False)
+            assertions.append(
+                {
+                    "name": assertion.get("assertion", "postman assertion"),
+                    "passed": error is None and skipped is False,
+                    "message": (
+                        "Skipped."
+                        if skipped
+                        else (error or {}).get("message", "Assertion passed.")
+                    ),
+                }
+            )
+        return assertions
+
+    @staticmethod
+    def _failure_assertion(failure):
+        error = failure.get("error") or {}
+        return {
+            "name": failure.get("at", "newman failure"),
+            "passed": False,
+            "message": error.get("message", "Newman reported a failure."),
+        }
+
+    @staticmethod
+    def _failure_key(failure):
+        source = failure.get("source") or {}
+        return source.get("id") or source.get("name")
+
+    def _failure_map(self, failures):
+        mapped = {}
+        for failure in failures:
+            key = self._failure_key(failure)
+            if key:
+                mapped.setdefault(str(key), []).append(failure)
+        return mapped
+
+    def _execution_key(self, execution):
+        item = execution.get("item") or {}
+        return item.get("id") or item.get("name")
+
+    def _result_from_execution(self, execution, failures):
+        item = execution.get("item") or {}
+        request = execution.get("request") or {}
+        response = execution.get("response")
+        assertions = self._assertions(execution)
+        key = self._execution_key(execution)
+        for failure in failures.get(str(key), []) if key else []:
+            assertions.append(self._failure_assertion(failure))
+        if not assertions:
+            assertions.append(
+                {
+                    "name": "newman request",
+                    "passed": response is not None,
+                    "message": (
+                        "Request completed."
+                        if response is not None
+                        else "Newman did not produce a response."
+                    ),
+                }
+            )
+
+        return {
+            "name": item.get("name", "Unnamed request"),
+            "response": PostmanCollection._redact_body(self._response_body(response)),
+            "status": self._response_status(response),
+            "method": self._request_method(request),
+            "url": PostmanCollection._redact_url(self._request_url(request)),
+            "time": self._response_time(response),
+            "passed": all(assertion["passed"] for assertion in assertions),
+            "assertions": assertions,
+        }
+
+    def _failure_result(self, name, message):
+        return [
+            {
+                "name": name,
+                "response": "",
+                "status": "0",
+                "method": "NEWMAN",
+                "url": "",
+                "time": 0,
+                "passed": False,
+                "assertions": [
+                    {
+                        "name": "newman",
+                        "passed": False,
+                        "message": message,
+                    }
+                ],
+            }
+        ]
+
+    def _parse_report(self, report_path, return_code):
+        try:
+            with open(report_path, encoding="utf-8") as file_obj:
+                report = json.load(file_obj)
+        except (OSError, ValueError):
+            return self._failure_result(
+                "Newman report",
+                "Newman did not produce a valid JSON report.",
+            )
+
+        run = report.get("run") or {}
+        executions = run.get("executions") or []
+        failures = run.get("failures") or []
+        failure_map = self._failure_map(failures)
+        results = [
+            self._result_from_execution(execution, failure_map)
+            for execution in executions
+        ]
+
+        execution_keys = {
+            self._execution_key(execution)
+            for execution in executions
+            if self._execution_key(execution)
+        }
+        for failure in failures:
+            if self._failure_key(failure) in execution_keys:
+                continue
+            assertion = self._failure_assertion(failure)
+            results.append(
+                {
+                    "name": str(self._failure_key(failure) or "Newman failure"),
+                    "response": "",
+                    "status": "0",
+                    "method": "NEWMAN",
+                    "url": "",
+                    "time": 0,
+                    "passed": False,
+                    "assertions": [assertion],
+                }
+            )
+
+        if not results:
+            return self._failure_result(
+                "Newman report",
+                "Newman completed without request executions.",
+            )
+        if return_code != 0 and all(result["passed"] for result in results):
+            results[-1]["passed"] = False
+            results[-1]["assertions"].append(
+                {
+                    "name": "newman exit code",
+                    "passed": False,
+                    "message": "Newman exited with code {}.".format(return_code),
+                }
+            )
+        return results
+
+    def start_postman_test(self, postman, debug=False):
+        """Execute a Postman collection with Newman and return Idelium results."""
+        with tempfile.TemporaryDirectory(prefix="idelium-newman-") as directory:
+            report_path = os.path.join(directory, "newman-report.json")
+            try:
+                command = self._command(directory, postman, report_path)
+            except FileNotFoundError:
+                return self._failure_result(
+                    "Newman",
+                    "Newman is not installed or is not available on PATH.",
+                )
+            except ValueError as error:
+                return self._failure_result("Newman", str(error))
+
+            if debug:
+                printer.print_important_text("Running Newman Postman runtime.")
+
+            try:
+                completed = self.subprocess_runner(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                )
+            except FileNotFoundError:
+                return self._failure_result(
+                    "Newman",
+                    "Newman is not installed or is not available on PATH.",
+                )
+            except subprocess.TimeoutExpired:
+                return self._failure_result(
+                    "Newman",
+                    "Newman execution exceeded the configured timeout.",
+                )
+
+            return self._parse_report(report_path, completed.returncode)
