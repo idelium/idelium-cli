@@ -32,6 +32,9 @@ CI, and Bamboo, and remotely managed test-execution hosts.
 - A supported browser and driver for local Selenium execution, or a reachable
   Selenium Grid.
 - Appium server, platform SDK, and device/emulator for mobile execution.
+- Node.js/npm and Newman for Postman collections imported from Idelium Web or
+  any collection that uses Postman scripts, variables, cookies, or runtime
+  assertions.
 - `libmagic` system support where required by the Python `libmagic` package.
 
 The package metadata, classifiers, test matrix, and CI workflow use the same
@@ -347,18 +350,33 @@ preferred.
 
 ### Newman runtime
 
-The Newman runtime is optional and requires the `newman` executable to be
-available on `PATH` on the machine running `idelium`. If Newman is missing, the
-step fails with a red console error that explains how to install Newman and how
-to verify the executable path. Use `--postmanNewmanTimeout=<seconds>` to bound
-Newman execution time.
+Newman is required for Postman collections imported from Idelium Web because the
+web application stores them with the `postman` runtime, which is designed to
+match Postman Desktop behavior. Newman is also required whenever `postman_auto`
+detects Postman runtime features such as scripts, `pm.test`, legacy
+`tests[...]` assertions, variables, cookies, or iteration data.
 
-When `postman_auto` detects a collection that requires Newman, install Newman on
-the execution host before running the CLI:
+Install Newman on every workstation, CI runner, or execution host that runs
+Postman-backed Idelium steps:
 
 ```bash
 npm install -g newman
 ```
+
+Verify that the executable is available on the same `PATH` used by the
+`idelium` command:
+
+```bash
+newman --version
+```
+
+If Node.js/npm is not installed yet, install the current LTS release from
+[nodejs.org](https://nodejs.org/) or through your operating system package
+manager, then run the Newman installation command above.
+
+If Newman is missing, Idelium fails the Postman step with a red console error
+instead of silently falling back to a less compatible runner. Use
+`--postmanNewmanTimeout=<seconds>` to bound Newman execution time.
 
 For local compatibility debugging, run the CLI with `--verbose` to print the
 selected Postman runner and safe collection statistics. To preserve the exact
