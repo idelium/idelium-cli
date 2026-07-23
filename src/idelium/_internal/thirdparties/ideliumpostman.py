@@ -25,6 +25,7 @@ printer = InitPrinter()
 class PostmanCollection:
     """Run collection requests without executing arbitrary Postman scripts."""
 
+    BODYLESS_METHODS = {"GET", "HEAD"}
     SENSITIVE_KEYS = {
         "api_key",
         "apikey",
@@ -229,21 +230,25 @@ class PostmanCollection:
         headers = self._request_headers(request)
         auth = self._authentication(request.get("auth", inherited_auth), headers)
         data, files = self._request_body(request)
+        request_options = {
+            "debug": debug,
+            "raise_for_status": False,
+            "headers": headers,
+            "auth": auth,
+            "allow_redirects": True,
+            "verify": self.verify,
+            "timeout": self.timeout,
+        }
+        if method not in self.BODYLESS_METHODS:
+            request_options["data"] = data
+            request_options["files"] = files
         started_at = time.monotonic()
 
         try:
             response = self.client.request(
                 method,
                 url,
-                debug=debug,
-                raise_for_status=False,
-                headers=headers,
-                auth=auth,
-                data=data,
-                files=files,
-                allow_redirects=True,
-                verify=self.verify,
-                timeout=self.timeout,
+                **request_options,
             )
             duration = time.monotonic() - started_at
             assertions = self._assertions(item, response)

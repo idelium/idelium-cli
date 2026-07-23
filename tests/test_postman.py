@@ -65,6 +65,35 @@ class PostmanCollectionTest(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertFalse(result["assertions"][1]["passed"])
 
+    def test_get_requests_ignore_postman_body_before_oauth_signing(self):
+        session = Mock()
+        session.request.return_value = self.response(200, '{"ok":true}')
+        runner = PostmanCollection(session=session)
+        item = {
+            "name": "OAuth GET with saved body",
+            "request": {
+                "method": "GET",
+                "url": {"raw": "https://example.test/echo"},
+                "auth": {
+                    "type": "oauth1",
+                    "oauth1": [
+                        {"key": "consumerKey", "value": "consumer"},
+                        {"key": "consumerSecret", "value": "secret"},
+                        {"key": "token", "value": "token"},
+                        {"key": "tokenSecret", "value": "token-secret"},
+                    ],
+                },
+                "body": {"mode": "raw", "raw": '{"ignored":true}'},
+            },
+            "response": [{"code": 200, "body": '{"ok":true}'}],
+        }
+
+        result = runner.connection_test(item)
+
+        self.assertTrue(result["passed"])
+        self.assertNotIn("data", session.request.call_args.kwargs)
+        self.assertNotIn("files", session.request.call_args.kwargs)
+
     def test_environment_variables_nested_folders_and_redaction_are_supported(self):
         session = Mock()
         session.request.return_value = self.response(
