@@ -304,6 +304,7 @@ class IdeliumWs:
 
     def start_test(self, idelium, test_configurations, config):
         """start test"""
+        exit_code = 0
         if config["ideliumServer"] is True:
             Path(config["dir_idelium_scripts"] + "server").touch()
         wrapper = idelium.get_wrapper(config)
@@ -356,51 +357,50 @@ class IdeliumWs:
                             postman_data,
                             typeofstep,
                         )["idStep"]
-                    if (
-                        status in ("2", "5")
-                        and object_return["type"] == "seleniumOrAppium"
-                    ):
-                        path = "screenshots/"
-                        file_name = str(id_test) + ".png"
-                        if not os.path.exists(path):
-                            os.makedirs(path)
-                        if config["json_step"]["attachScreenshot"] is True:
-                            wrapper.screen_shot(
-                                driver, path + file_name, config["ideliumServer"]
-                            )
-                        if config["test"] is False:
-                            file_name_jpg = path + str(id_test) + ".jpg"
-                            with Image.open(path + file_name) as img:
-                                rgb_im = img.convert("RGB")
-                                rgb_im.save(file_name_jpg)
-                                with open(file_name_jpg, "rb") as img_file:
-                                    screenshot_base64 = base64.b64encode(
-                                        img_file.read()
-                                    )
-                                    self.update_step(
-                                        config,
-                                        id_step,
-                                        [
-                                            "data:image/jpg;base64,"
-                                            + str(screenshot_base64)[2:-1]
-                                        ],
-                                    )
+                    if status in ("2", "5"):
+                        exit_code = 1
+                        if object_return["type"] == "seleniumOrAppium":
+                            path = "screenshots/"
+                            file_name = str(id_test) + ".png"
+                            if not os.path.exists(path):
+                                os.makedirs(path)
+                            if config["json_step"]["attachScreenshot"] is True:
+                                wrapper.screen_shot(
+                                    driver, path + file_name, config["ideliumServer"]
+                                )
+                            if config["test"] is False:
+                                file_name_jpg = path + str(id_test) + ".jpg"
+                                with Image.open(path + file_name) as img:
+                                    rgb_im = img.convert("RGB")
+                                    rgb_im.save(file_name_jpg)
+                                    with open(file_name_jpg, "rb") as img_file:
+                                        screenshot_base64 = base64.b64encode(
+                                            img_file.read()
+                                        )
+                                        self.update_step(
+                                            config,
+                                            id_step,
+                                            [
+                                                "data:image/jpg;base64,"
+                                                + str(screenshot_base64)[2:-1]
+                                            ],
+                                        )
 
-                            os.unlink(path + file_name)
-                            os.unlink(file_name_jpg)
-                        if config["json_step"]["failedExit"] is True:
+                                os.unlink(path + file_name)
+                                os.unlink(file_name_jpg)
+
+                        should_stop = (
+                            object_return["type"] == "postman"
+                            or config["json_step"]["failedExit"] is True
+                        )
+                        if config["test"] is False:
+                            self.update_test(config, id_test, 2, postman_data)
+                        if should_stop:
                             printer.danger(
                                 "The test '"
                                 + cycle["name"]
-                                + "' it is forcibly interrupted due to the blocking failure of the step"
+                                + "' was interrupted because a required step failed"
                             )
-                            if config["test"] is False:
-                                id_test = self.update_test(
-                                    config,
-                                    id_test,
-                                    2,
-                                    postman_data,
-                                )
                             test_failed = True
                     else:
                         if config["test"] is False:
@@ -409,3 +409,4 @@ class IdeliumWs:
                 os.remove(config["dir_idelium_scripts"] + "server")
             if driver != None:
                 driver.quit()
+        return exit_code

@@ -143,6 +143,80 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         create_step.assert_not_called()
         update_test.assert_not_called()
 
+    def test_postman_failure_is_registered_and_stops_execution(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        postman_data = [
+            {
+                "name": "Newman",
+                "method": "NEWMAN",
+                "status": "0",
+                "passed": False,
+                "assertions": [
+                    {
+                        "name": "newman",
+                        "passed": False,
+                        "message": "Newman was not found on PATH.",
+                    }
+                ],
+            }
+        ]
+        config = {
+            "idCycle": "2",
+            "idProject": "3",
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "postman_17": {
+                    "name": "postman",
+                    "attachScreenshot": False,
+                    "failedExit": False,
+                }
+            }
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.return_value = {
+            "status": "2",
+            "driver": None,
+            "postman_data": postman_data,
+            "type": "postman",
+            "step_failed": {"stepType": "postman_collection"},
+        }
+
+        with (
+            patch.object(web_service, "get_cycles") as get_cycles,
+            patch.object(web_service, "get_tests") as get_tests,
+            patch.object(web_service, "create_folder") as create_folder,
+            patch.object(web_service, "create_test") as create_test,
+            patch.object(web_service, "create_step") as create_step,
+            patch.object(web_service, "update_test") as update_test,
+        ):
+            get_cycles.return_value = [
+                {"id": 11, "name": "postman cycle", "description": "postman cycle"}
+            ]
+            get_tests.return_value = [
+                {"id": 17, "name": "postman"},
+                {"id": 18, "name": "should-not-run"},
+            ]
+            create_folder.return_value = {"idCycle": 77}
+            create_test.return_value = {"idTest": 91}
+            create_step.return_value = {"idStep": 92}
+
+            exit_code = web_service.start_test(idelium, test_configurations, config)
+
+        self.assertEqual(1, exit_code)
+        create_step.assert_called_once()
+        self.assertEqual("2", create_step.call_args.args[5])
+        update_test.assert_called_once_with(config, 91, 2, postman_data)
+        idelium.execute_step.assert_called_once()
+        printer.danger.assert_called_with(
+            "The test 'postman cycle' was interrupted because a required step failed"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

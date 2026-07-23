@@ -28,6 +28,20 @@ class CliErrorHandlingTest(unittest.TestCase):
         self.assertEqual(2, exit_code)
         danger.assert_called_once_with("GET request failed for https://localhost")
 
+    def test_test_failures_return_non_zero_exit_code(self):
+        with (
+            patch.object(
+                cli_main.idelium_cl_lib,
+                "define_parameters",
+                return_value={"cl_params": {"ideliumServer": False}},
+            ),
+            patch.object(cli_main, "start_test", return_value=1),
+            patch.object(cli_main.printer, "print_important_text"),
+        ):
+            exit_code = cli_main.main(["idelium"])
+
+        self.assertEqual(1, exit_code)
+
 
 if __name__ == "__main__":
     unittest.main()
