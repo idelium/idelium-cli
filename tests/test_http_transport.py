@@ -2,11 +2,11 @@
 
 import io
 import unittest
-import warnings
 from contextlib import redirect_stdout
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 from idelium._internal.commons.connection import (
     Connection,
@@ -44,12 +44,19 @@ class HttpTransportTest(unittest.TestCase):
 
         insecure_session = Mock()
         insecure_session.request.return_value = self.response()
-        with warnings.catch_warnings(record=True) as recorded:
-            warnings.simplefilter("always")
-            Connection.configure(insecure=True, session=insecure_session)
+        Connection.configure(insecure=True, session=insecure_session)
         Connection.request("GET", "https://example.test")
         self.assertFalse(insecure_session.request.call_args.kwargs["verify"])
-        self.assertIn("verification is disabled", str(recorded[0].message))
+
+    def test_explicit_insecure_mode_suppresses_repeated_urllib3_warnings(self):
+        session = Mock()
+        with patch("warnings.filterwarnings") as filterwarnings:
+            Connection.configure(insecure=True, session=session)
+
+        filterwarnings.assert_called_with(
+            "ignore",
+            category=InsecureRequestWarning,
+        )
 
     def test_non_json_and_http_errors_do_not_expose_response_bodies(self):
         session = Mock()

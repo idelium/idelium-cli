@@ -35,6 +35,9 @@ class CliArgumentParsingTest(unittest.TestCase):
         self.assertEqual("key==", cl_params["ideliumKey"])
         self.assertEqual("https://localhost", cl_params["ideliumwsBaseurl"])
         self.assertTrue(cl_params["insecure"])
+        printer.warning.assert_called_with(
+            "TLS certificate verification is disabled by explicit request."
+        )
 
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()

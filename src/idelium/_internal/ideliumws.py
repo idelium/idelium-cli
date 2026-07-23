@@ -6,7 +6,7 @@ import json
 import collections
 from pathlib import Path
 import base64
-from idelium._internal.commons.connection import Connection
+from idelium._internal.commons.connection import Connection, HttpTransportError
 from PIL import Image
 
 
@@ -33,11 +33,11 @@ class IdeliumWs:
                                 config["is_debug"])
 
     @staticmethod
-    def create_test(config, id_test, name):
+    def create_test(config, id_cycle, id_test, name):
         ''' create test '''
         url = config["api_idelium"] + "test"
         payload = {
-            "testCycleId": config['idCycle'],
+            "testCycleId": id_cycle,
             "testId": id_test,
             "name": name,
         }
@@ -57,11 +57,11 @@ class IdeliumWs:
                                 config["is_debug"])
 
     @staticmethod
-    def create_step(config, id_test, id_step, name, status, data, typeofstep):
+    def create_step(config, id_cycle, id_test, id_step, name, status, data, typeofstep):
         ''' create step '''
         url = config["api_idelium"] + "step"
         payload = {
-            "testCycleId": config['idCycle'],
+            "testCycleId": id_cycle,
             "testId": id_test,
             "stepId": id_step,
             "name": name,
@@ -160,9 +160,29 @@ class IdeliumWs:
         config_step = None
         #search cycle for this cycle
         for cycle in object_cycle:
-            object_test = self.get_tests(config, cycle["id"])
+            try:
+                object_test = self.get_tests(config, cycle["id"])
+            except HttpTransportError as error:
+                raise HttpTransportError(
+                    "Remote test cycle configuration is inconsistent: "
+                    "test cycle {} references missing test {}. {}".format(
+                        config["idCycle"],
+                        cycle["id"],
+                        error,
+                    )
+                ) from error
             for test in object_test:
-                step = self.get_step(config, test["id"])
+                try:
+                    step = self.get_step(config, test["id"])
+                except HttpTransportError as error:
+                    raise HttpTransportError(
+                        "Remote test cycle configuration is inconsistent: "
+                        "test cycle {} references missing step {}. {}".format(
+                            config["idCycle"],
+                            test["id"],
+                            error,
+                        )
+                    ) from error
                 # write step
                 array_steps[step["step_json_name"]] = step["objectStep"]
                 print(step["step_json_name"])
@@ -262,7 +282,12 @@ class IdeliumWs:
             printer = config["printer"]
             object_test = self.get_tests(config, cycle["id"])
             printer.success("Test: " + cycle["description"])
-            id_test = self.create_test(config, id_cycle, cycle["name"])['idTest']
+            id_test = self.create_test(
+                config,
+                id_cycle,
+                cycle["id"],
+                cycle["name"],
+            )['idTest']
             test_failed = False
             for test in object_test:
                 if test_failed is False:
@@ -285,12 +310,16 @@ class IdeliumWs:
                     id_step = None
                     #test["name"],
                     if config["test"] is False:
-                        id_step = self.create_step(config, id_test, test["id"],
-                                                 json_step["name"],
-                                                 status,
-                                                 postman_data,
-                                                 typeofstep
-                                                 )['idStep']
+                        id_step = self.create_step(
+                            config,
+                            id_cycle,
+                            id_test,
+                            test["id"],
+                            json_step["name"],
+                            status,
+                            postman_data,
+                            typeofstep,
+                        )['idStep']
                     if status in ('2','5') and object_return['type']=='seleniumOrAppium':
                         path = "screenshots/"
                         file_name = str(id_test) + ".png"

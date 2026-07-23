@@ -246,6 +246,8 @@ class InitIdelium():
             insecure=cl_params['insecure'],
             timeout=timeout,
         )
+        if cl_params['insecure']:
+            printer.warning('TLS certificate verification is disabled by explicit request.')
 
     def load_parameters(self, cl_params, ideliumws, printer):
 

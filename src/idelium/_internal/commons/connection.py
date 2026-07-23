@@ -7,11 +7,17 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.exceptions import InsecureRequestWarning
 from urllib3.util.retry import Retry
 
 
 class HttpTransportError(RuntimeError):
     """Report a transport or response failure without exposing response data."""
+
+    def __init__(self, message, status_code=None, url=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.url = url
 
 
 class HttpClient:
@@ -117,7 +123,9 @@ class HttpClient:
                     method,
                     response.status_code,
                     self.redact_url(url),
-                )
+                ),
+                status_code=response.status_code,
+                url=self.redact_url(url),
             )
         return response
 
@@ -152,11 +160,7 @@ class Connection:
         session=None,
     ):
         if insecure:
-            warnings.warn(
-                "TLS certificate verification is disabled by explicit request.",
-                UserWarning,
-                stacklevel=2,
-            )
+            warnings.filterwarnings("ignore", category=InsecureRequestWarning)
             verify = False
         else:
             verify = ca_bundle or True
