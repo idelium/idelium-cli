@@ -172,6 +172,19 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
         self.assertIn("npm install -g newman", message)
         self.assertIn("newman --version", message)
 
+    @patch("idelium._internal.thirdparties.ideliumpostman.printer")
+    def test_missing_newman_binary_is_visible_without_debug(self, printer_mock):
+        runner = PostmanNewmanCollection(binary_resolver=lambda binary: None)
+
+        results = runner.start_postman_test(
+            {"collection": {"info": {"name": "Postman Echo"}, "item": []}},
+            debug=False,
+        )
+
+        self.assertFalse(results[0]["passed"])
+        printer_mock.danger.assert_called_once()
+        self.assertIn("npm install -g newman", printer_mock.danger.call_args.args[0])
+
     def test_newman_failures_are_mapped_to_failed_assertions(self):
         def subprocess_runner(command, **kwargs):
             report_path = command[command.index("--reporter-json-export") + 1]
@@ -493,6 +506,44 @@ class PostmanNewmanManagerTest(unittest.TestCase):
         config["printer"].danger.assert_called_with(
             "newman: " + PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
         )
+        safe_class.assert_not_called()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_runtime_prints_failed_assertions_without_verbose(
+        self, newman_class, safe_class
+    ):
+        newman_class.return_value.start_postman_test.return_value = [
+            {
+                "name": "Newman",
+                "method": "NEWMAN",
+                "status": "0",
+                "passed": False,
+                "assertions": [
+                    {
+                        "name": "newman",
+                        "passed": False,
+                        "message": PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE,
+                    }
+                ],
+            }
+        ]
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "runtime": "postman",
+                "collection": {"collection": {"item": []}},
+            }
+        )
+        config["is_debug"] = False
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("2", result["status"])
+        config["printer"].danger.assert_called_with(
+            "newman: " + PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
+        )
+        config["printer"].print_important_text.assert_not_called()
         safe_class.assert_not_called()
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")

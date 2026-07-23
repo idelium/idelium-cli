@@ -614,8 +614,7 @@ class PostmanNewmanCollection:
         try:
             command = self._command(directory, postman, report_path)
         except FileNotFoundError:
-            if debug:
-                printer.danger(self.NEWMAN_MISSING_MESSAGE)
+            printer.danger(self.NEWMAN_MISSING_MESSAGE)
             return self._failure_result(
                 "Newman",
                 self.NEWMAN_MISSING_MESSAGE,
@@ -636,8 +635,7 @@ class PostmanNewmanCollection:
                 timeout=self.timeout,
             )
         except FileNotFoundError:
-            if debug:
-                printer.danger(self.NEWMAN_MISSING_MESSAGE)
+            printer.danger(self.NEWMAN_MISSING_MESSAGE)
             return self._failure_result(
                 "Newman",
                 self.NEWMAN_MISSING_MESSAGE,

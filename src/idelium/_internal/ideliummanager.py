@@ -158,14 +158,15 @@ class StartManager:
                                 result.get("name", "Unnamed request"),
                             )
                         )
-                        for assertion in result.get("assertions", []):
-                            if assertion.get("passed") is False:
-                                printer.danger(
-                                    "{}: {}".format(
-                                        assertion.get("name", "postman assertion"),
-                                        assertion.get("message", "Assertion failed."),
-                                    )
+                for result in postman_data:
+                    for assertion in result.get("assertions", []):
+                        if assertion.get("passed") is False:
+                            printer.danger(
+                                "{}: {}".format(
+                                    assertion.get("name", "postman assertion"),
+                                    assertion.get("message", "Assertion failed."),
                                 )
+                            )
                 typeOfStep = "postman"
                 if any(not result["passed"] for result in postman_data):
                     status = "2"
