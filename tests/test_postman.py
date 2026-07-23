@@ -94,6 +94,35 @@ class PostmanCollectionTest(unittest.TestCase):
         self.assertNotIn("data", session.request.call_args.kwargs)
         self.assertNotIn("files", session.request.call_args.kwargs)
 
+    def test_get_requests_disable_hawk_content_hash_without_body(self):
+        session = Mock()
+        session.request.return_value = self.response(200, '{"ok":true}')
+        runner = PostmanCollection(session=session)
+        item = {
+            "name": "Hawk GET with saved body",
+            "request": {
+                "method": "GET",
+                "url": {"raw": "https://example.test/echo"},
+                "auth": {
+                    "type": "hawk",
+                    "hawk": [
+                        {"key": "authId", "value": "hawk-id"},
+                        {"key": "authKey", "value": "hawk-secret"},
+                        {"key": "algorithm", "value": "sha256"},
+                    ],
+                },
+                "body": {"mode": "raw", "raw": '{"ignored":true}'},
+            },
+            "response": [{"code": 200, "body": '{"ok":true}'}],
+        }
+
+        result = runner.connection_test(item)
+
+        self.assertTrue(result["passed"])
+        self.assertFalse(session.request.call_args.kwargs["auth"].always_hash_content)
+        self.assertNotIn("data", session.request.call_args.kwargs)
+        self.assertNotIn("files", session.request.call_args.kwargs)
+
     def test_environment_variables_nested_folders_and_redaction_are_supported(self):
         session = Mock()
         session.request.return_value = self.response(

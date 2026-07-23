@@ -131,7 +131,7 @@ class PostmanCollection:
             return json.dumps(body.get("graphql", {})), None
         return None, None
 
-    def _authentication(self, auth, headers):
+    def _authentication(self, auth, headers, has_body=True):
         if not auth or auth.get("type") in {None, "noauth"}:
             return None
 
@@ -156,6 +156,7 @@ class PostmanCollection:
                 id=values.get("authId", ""),
                 key=values.get("authKey", ""),
                 algorithm=values.get("algorithm", "sha256"),
+                always_hash_content=has_body,
             )
         if auth_type in {"bearer", "oauth2"}:
             token = values.get("token", values.get("accessToken", ""))
@@ -228,8 +229,15 @@ class PostmanCollection:
         method = str(request.get("method", "GET")).upper()
         url = self._request_url(request)
         headers = self._request_headers(request)
-        auth = self._authentication(request.get("auth", inherited_auth), headers)
         data, files = self._request_body(request)
+        has_body = method not in self.BODYLESS_METHODS and (
+            data is not None or files is not None
+        )
+        auth = self._authentication(
+            request.get("auth", inherited_auth),
+            headers,
+            has_body=has_body,
+        )
         request_options = {
             "debug": debug,
             "raise_for_status": False,
