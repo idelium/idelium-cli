@@ -308,7 +308,8 @@ Idelium supports three Postman execution modes:
 
 - `postman_auto` is the default mode. It uses the safe Python runner for simple
   request collections and automatically switches to Newman when the collection
-  uses Postman runtime features such as `pm.test`, pre-request scripts, test
+  uses Postman runtime features such as `pm.test`, legacy `tests[...]`
+  assertions, `postman.setGlobalVariable(...)`, pre-request scripts, test
   scripts, or iteration data.
 - `postman` uses the Newman-backed runtime for steps created by the Idelium web
   application, matching Postman Desktop semantics for scripts, authentication,

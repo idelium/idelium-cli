@@ -283,6 +283,56 @@ class PostmanNewmanManagerTest(unittest.TestCase):
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")
     @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_auto_runtime_uses_newman_for_legacy_postman_tests(
+        self, newman_class, safe_class
+    ):
+        newman_class.return_value.start_postman_test.return_value = [
+            {"passed": True, "assertions": [{"name": "legacy tests", "passed": True}]}
+        ]
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "collection": {
+                    "runtime": "postman_auto",
+                    "collection": {
+                        "info": {"name": "Postman Echo"},
+                        "item": [
+                            {
+                                "name": "POST Raw Text",
+                                "request": {
+                                    "method": "POST",
+                                    "url": "https://postman-echo.com/post",
+                                    "body": {
+                                        "mode": "raw",
+                                        "raw": "Duis posuere augue vel cursus.",
+                                    },
+                                },
+                                "event": [
+                                    {
+                                        "listen": "test",
+                                        "script": {
+                                            "exec": [
+                                                "tests['response is valid JSON'] = true;",
+                                                "postman.setGlobalVariable('echo', 'ok');",
+                                            ]
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("1", result["status"])
+        newman_class.return_value.start_postman_test.assert_called_once()
+        safe_class.assert_not_called()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
     def test_postman_auto_runtime_keeps_safe_runner_for_simple_collections(
         self, newman_class, safe_class
     ):
