@@ -168,33 +168,108 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
 
 
 class PostmanNewmanManagerTest(unittest.TestCase):
+    def manager_config(self, step):
+        return {
+            "wrapper": Mock(),
+            "printer": Mock(),
+            "json_step": {"steps": [step]},
+            "is_debug": False,
+        }
+
     @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
     def test_postman_newman_runtime_is_selected_explicitly(self, newman_class):
         newman_class.return_value.start_postman_test.return_value = [
             {"passed": True, "assertions": [{"name": "newman", "passed": True}]}
         ]
-        config = {
-            "wrapper": Mock(),
-            "printer": Mock(),
-            "json_step": {
-                "steps": [
-                    {
-                        "stepType": "postman_collection",
-                        "collection": {
-                            "runtime": "postman_newman",
-                            "collection": {"item": []},
-                        },
-                    }
-                ],
-            },
-            "is_debug": False,
-        }
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "collection": {
+                    "runtime": "postman_newman",
+                    "collection": {"item": []},
+                },
+            }
+        )
 
         result = StartManager.execute_step(None, config)
 
         self.assertEqual("1", result["status"])
         self.assertEqual("postman", result["type"])
         newman_class.return_value.start_postman_test.assert_called_once()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_auto_runtime_uses_newman_for_postman_scripts(
+        self, newman_class, safe_class
+    ):
+        newman_class.return_value.start_postman_test.return_value = [
+            {"passed": True, "assertions": [{"name": "pm.test", "passed": True}]}
+        ]
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "collection": {
+                    "collection": {
+                        "item": [
+                            {
+                                "name": "scripted request",
+                                "request": {
+                                    "method": "GET",
+                                    "url": "https://example.test",
+                                },
+                                "event": [
+                                    {
+                                        "listen": "test",
+                                        "script": {
+                                            "exec": ["pm.test('status', () => {})"]
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("1", result["status"])
+        newman_class.return_value.start_postman_test.assert_called_once()
+        safe_class.assert_not_called()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_auto_runtime_keeps_safe_runner_for_simple_collections(
+        self, newman_class, safe_class
+    ):
+        safe_class.return_value.start_postman_test.return_value = [
+            {"passed": True, "assertions": [{"name": "status", "passed": True}]}
+        ]
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "collection": {
+                    "collection": {
+                        "item": [
+                            {
+                                "name": "simple request",
+                                "request": {
+                                    "method": "GET",
+                                    "url": "https://example.test",
+                                },
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("1", result["status"])
+        safe_class.return_value.start_postman_test.assert_called_once()
+        newman_class.assert_not_called()
 
     def test_postman_newman_timeout_is_validated_with_http_timeouts(self):
         params = InitIdelium.get_default_parameters()

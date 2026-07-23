@@ -304,9 +304,13 @@ execution so they are not passed through generic command artifacts.
 
 ## Postman Collection execution
 
-Idelium supports two Postman execution modes:
+Idelium supports three Postman execution modes:
 
-- `postman_safe` is the default Python runner. It executes Postman Collection
+- `postman_auto` is the default mode. It uses the safe Python runner for simple
+  request collections and automatically switches to Newman when the collection
+  uses Postman runtime features such as `pm.test`, pre-request scripts, test
+  scripts, or iteration data.
+- `postman_safe` is the Python runner. It executes Postman Collection
   v2.1 requests, including requests inside nested folders, without running
   arbitrary scripts.
 - `postman_newman` is an optional Newman-backed runtime for full Postman
@@ -331,10 +335,10 @@ JSON bodies and sensitive URL query parameters.
 
 The safe runner intentionally does not execute arbitrary Postman scripts. It
 does not run `pm.test`, pre-request scripts, post-response scripts, or dynamic
-collection/environment mutations. Use `postman_newman` when full Postman
-runtime compatibility is required; use `postman_safe` when deterministic
-request execution, saved-example assertions, redaction, and Idelium result
-reporting are preferred.
+collection/environment mutations. Leave the runtime unset to let `postman_auto`
+choose the correct runner, use `postman_newman` to force full Postman runtime
+compatibility, or use `postman_safe` when deterministic request execution,
+saved-example assertions, redaction, and Idelium result reporting are preferred.
 
 ### Newman runtime
 
@@ -342,6 +346,13 @@ The Newman runtime is optional and requires the `newman` executable to be
 available on `PATH` on the machine running `idelium`. If Newman is missing, the
 step fails with a clear Idelium result instead of crashing the process. Use
 `--postmanNewmanTimeout=<seconds>` to bound Newman execution time.
+
+When `postman_auto` detects a collection that requires Newman, install Newman on
+the execution host before running the CLI:
+
+```bash
+npm install -g newman
+```
 
 Use `postman_newman` in the uploaded Postman step payload:
 
