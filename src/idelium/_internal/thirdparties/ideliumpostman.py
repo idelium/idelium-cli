@@ -322,6 +322,13 @@ class PostmanCollection:
 class PostmanNewmanCollection:
     """Run Postman collections through Newman and map reports to Idelium results."""
 
+    NEWMAN_MISSING_MESSAGE = (
+        "Newman is required to run this Postman collection but was not found on PATH. "
+        "Install it with `npm install -g newman`, then verify it with `newman --version`. "
+        "If it is already installed, make sure the directory containing the `newman` "
+        "executable is available in the PATH used by the idelium command."
+    )
+
     def __init__(
         self,
         newman_binary="newman",
@@ -602,40 +609,54 @@ class PostmanNewmanCollection:
             )
         return results
 
+    def _run_in_directory(self, directory, postman, debug):
+        report_path = os.path.join(directory, "newman-report.json")
+        try:
+            command = self._command(directory, postman, report_path)
+        except FileNotFoundError:
+            if debug:
+                printer.danger(self.NEWMAN_MISSING_MESSAGE)
+            return self._failure_result(
+                "Newman",
+                self.NEWMAN_MISSING_MESSAGE,
+            )
+        except ValueError as error:
+            return self._failure_result("Newman", str(error))
+
+        if debug:
+            printer.print_important_text("Running Newman Postman runtime.")
+            printer.print_important_text("Newman working directory: " + directory)
+
+        try:
+            completed = self.subprocess_runner(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+        except FileNotFoundError:
+            if debug:
+                printer.danger(self.NEWMAN_MISSING_MESSAGE)
+            return self._failure_result(
+                "Newman",
+                self.NEWMAN_MISSING_MESSAGE,
+            )
+        except subprocess.TimeoutExpired:
+            return self._failure_result(
+                "Newman",
+                "Newman execution exceeded the configured timeout.",
+            )
+
+        return self._parse_report(report_path, completed.returncode)
+
     def start_postman_test(self, postman, debug=False):
         """Execute a Postman collection with Newman and return Idelium results."""
+        debug_root = os.environ.get("IDELIUM_POSTMAN_DEBUG_DIR")
+        if debug and debug_root:
+            os.makedirs(debug_root, exist_ok=True)
+            directory = tempfile.mkdtemp(prefix="idelium-newman-", dir=debug_root)
+            return self._run_in_directory(directory, postman, debug)
+
         with tempfile.TemporaryDirectory(prefix="idelium-newman-") as directory:
-            report_path = os.path.join(directory, "newman-report.json")
-            try:
-                command = self._command(directory, postman, report_path)
-            except FileNotFoundError:
-                return self._failure_result(
-                    "Newman",
-                    "Newman is not installed or is not available on PATH.",
-                )
-            except ValueError as error:
-                return self._failure_result("Newman", str(error))
-
-            if debug:
-                printer.print_important_text("Running Newman Postman runtime.")
-
-            try:
-                completed = self.subprocess_runner(
-                    command,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout,
-                )
-            except FileNotFoundError:
-                return self._failure_result(
-                    "Newman",
-                    "Newman is not installed or is not available on PATH.",
-                )
-            except subprocess.TimeoutExpired:
-                return self._failure_result(
-                    "Newman",
-                    "Newman execution exceeded the configured timeout.",
-                )
-
-            return self._parse_report(report_path, completed.returncode)
+            return self._run_in_directory(directory, postman, debug)

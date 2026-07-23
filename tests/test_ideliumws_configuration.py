@@ -94,6 +94,55 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             start.call_args_list[1].args[2],
         )
 
+    def test_test_mode_does_not_create_or_update_remote_results(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "idCycle": "2",
+            "idProject": "3",
+            "test": True,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "postman_17": {
+                    "name": "postman",
+                    "attachScreenshot": False,
+                    "failedExit": False,
+                }
+            }
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.return_value = {
+            "status": "1",
+            "driver": None,
+            "postman_data": [],
+            "type": "postman",
+            "step_failed": "",
+        }
+
+        with (
+            patch.object(web_service, "get_cycles") as get_cycles,
+            patch.object(web_service, "get_tests") as get_tests,
+            patch.object(web_service, "create_folder") as create_folder,
+            patch.object(web_service, "create_test") as create_test,
+            patch.object(web_service, "create_step") as create_step,
+            patch.object(web_service, "update_test") as update_test,
+        ):
+            get_cycles.return_value = [
+                {"id": 11, "name": "postman cycle", "description": "postman cycle"}
+            ]
+            get_tests.return_value = [{"id": 17, "name": "postman"}]
+
+            web_service.start_test(idelium, test_configurations, config)
+
+        create_folder.assert_not_called()
+        create_test.assert_not_called()
+        create_step.assert_not_called()
+        update_test.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

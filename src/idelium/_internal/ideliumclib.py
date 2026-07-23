@@ -1,4 +1,5 @@
 """System module."""
+
 from __future__ import absolute_import
 import sys
 import tempfile
@@ -9,16 +10,17 @@ import selenium
 from idelium._internal.commons.connection import Connection
 
 
-class InitIdelium():
-    ''' init '''
+class InitIdelium:
+    """init"""
+
     @staticmethod
     def get_selenium_version():
-        ''' version selenium '''
+        """version selenium"""
         return selenium.__version__
 
     @staticmethod
     def get_syntax():
-        ''' help command line '''
+        """help command line"""
         return """
     \033[1mUsage\033[0m: idelium [options]
 
@@ -73,60 +75,63 @@ class InitIdelium():
     working with jira/zephyr: idelium --reportingService=zephyr --idJira=prj-1234 --username=user --password=secret --environment=prod.json --useragent='apple 1134'
 
     """
+
     @staticmethod
     def get_reguired_parameters():
         """Returns a dictionary of the required parameters for Idelium."""
         return {
-            "idProject" : 0,
-            "idCycle" : 0,
-            "environment" : 0,
+            "idProject": 0,
+            "idCycle": 0,
+            "environment": 0,
             "ideliumKey": 0,
         }
+
     @staticmethod
     def get_default_parameters():
         """Returns a dictionary of the default parameters for Idelium."""
         return {
-            'execution_name': 'automation test python',
-            'reportingService': 'idelium',
-            'ideliumwsBaseurl': None,
-            'base_url':None,
-            'zephyrApiUrl':None,
-            'jiraApiUrl':None,
-            'dir_plugins':"plugin",
-            'test':False,
-            'is_debug':False,
-            'device':None,
-            'width': 1920,
-            'height':1080,
-            'username':None,
-            'password':None,
-            'environment':None,
-            'idJira':None,
-            'fileSteps':None,
-            'idVersion':None,
-            'idCycle':None,
-            'useragent':None,
-            'idProject':None,
-            'idChannel' : None,
-            'url' : None,
-            'isRealDevice' : False,
-            'os' : None,
-            'appiumServer' : None,
-            'appiumDesiredCaps' : None,
-            'seleniumGridUrl': None,
-            'seleniumGridCapabilities': None,
-            'caBundle': None,
-            'insecure': False,
-            'httpConnectTimeout': 5,
-            'httpReadTimeout': 30,
-            'postmanNewmanTimeout': 300,
-            'count':0,
-            'ideliumKey':None,
-            'forcedownload':False,
-            'local':False,
-            'ideliumServer': False,
-            'ideliumServerPort': 8691,
+            "execution_name": "automation test python",
+            "reportingService": "idelium",
+            "ideliumwsBaseurl": None,
+            "base_url": None,
+            "zephyrApiUrl": None,
+            "jiraApiUrl": None,
+            "dir_plugins": "plugin",
+            "test": False,
+            "is_debug": False,
+            "device": None,
+            "width": 1920,
+            "height": 1080,
+            "username": None,
+            "password": None,
+            "environment": None,
+            "idJira": None,
+            "fileSteps": None,
+            "idVersion": None,
+            "idCycle": None,
+            "useragent": None,
+            "idProject": None,
+            "idChannel": None,
+            "url": None,
+            "isRealDevice": False,
+            "os": None,
+            "appiumServer": None,
+            "appiumDesiredCaps": None,
+            "seleniumGridUrl": None,
+            "seleniumGridCapabilities": None,
+            "caBundle": None,
+            "insecure": False,
+            "httpConnectTimeout": 5,
+            "httpReadTimeout": 30,
+            "postmanNewmanTimeout": 300,
+            "count": 0,
+            "ideliumKey": None,
+            "forcedownload": False,
+            "local": False,
+            "ideliumServer": False,
+            "ideliumServerPort": 8691,
         }
+
     @staticmethod
     def _parse_cli_args(args, known_parameters, flag_parameters, printer):
         tokens = list(args)
@@ -160,70 +165,69 @@ class InitIdelium():
             index += 1
         return parsed_args
 
-    def define_parameters(self,args,ideliumws,printer):
-        ''' set all necessary parameters '''
-        cl_params= self.get_default_parameters()
-        check_required=self.get_reguired_parameters()
-        cl_params['dir_idelium_scripts'] = tempfile.mkdtemp()
-        flag_parameters = {"forcedownload", "ideliumServer", "insecure"}
+    def define_parameters(self, args, ideliumws, printer):
+        """set all necessary parameters"""
+        cl_params = self.get_default_parameters()
+        check_required = self.get_reguired_parameters()
+        cl_params["dir_idelium_scripts"] = tempfile.mkdtemp()
+        flag_parameters = {"forcedownload", "ideliumServer", "insecure", "test"}
         parsed_args = self._parse_cli_args(args, cl_params, flag_parameters, printer)
         for command, value, token in parsed_args:
             if command in cl_params:
-                if command == 'ideliumKey':
-                    cl_params['ideliumKey'] = value
+                if command == "ideliumKey":
+                    cl_params["ideliumKey"] = value
                 elif command in flag_parameters:
                     cl_params[command] = True
-                elif command == 'ideliumServerPort': 
-                    cl_params['ideliumServerPort'] = int(value)
+                elif command == "ideliumServerPort":
+                    cl_params["ideliumServerPort"] = int(value)
                 else:
-                    cl_params[command]=value
+                    cl_params[command] = value
                 if command in check_required:
-                    check_required[command]=1
+                    check_required[command] = 1
             elif command == "verbose":
-                cl_params['is_debug'] = True
+                cl_params["is_debug"] = True
             elif command == "help":
                 print(self.get_syntax())
                 sys.exit(0)
             else:
-                print (self.get_syntax())
+                print(self.get_syntax())
                 print("\n" + token + ": is not a valid option")
                 sys.exit(1)
-        count_req=0
+        count_req = 0
         for i in check_required:
-            count_req=count_req + check_required[i]
-        if cl_params['ideliumServer'] is False:
-            if cl_params['ideliumKey']is None:
-                file_idelium_key=str(Path.home()) + '/.idelium'
+            count_req = count_req + check_required[i]
+        if cl_params["ideliumServer"] is False:
+            if cl_params["ideliumKey"] is None:
+                file_idelium_key = str(Path.home()) + "/.idelium"
                 if Path(file_idelium_key).is_file() is True:
                     file = open(file_idelium_key, "r")
-                    cl_params['ideliumKey']=file.read()
+                    cl_params["ideliumKey"] = file.read()
                 else:
-                    print (self.get_syntax())
-                    printer.danger('ideliumKey is not setted !')
+                    print(self.get_syntax())
+                    printer.danger("ideliumKey is not setted !")
                     sys.exit(1)
-        if cl_params['ideliumServer'] is False:
-            if cl_params['reportingService'] == 'idelium':
-                if (cl_params['idProject'] is None
-                        or cl_params['idCycle'] is None):
+        if cl_params["ideliumServer"] is False:
+            if cl_params["reportingService"] == "idelium":
+                if cl_params["idProject"] is None or cl_params["idCycle"] is None:
                     print(self.get_syntax())
                     printer.danger("\nidProject and idCycle are mandatory")
                     sys.exit(1)
-                if cl_params['reportingService'] == 'zephyr':
+                if cl_params["reportingService"] == "zephyr":
                     if count_req < 4:
                         print(self.get_syntax())
                         printer.danger("\nMissed required options")
                         sys.exit(1)
-                if cl_params['environment'] is None:
+                if cl_params["environment"] is None:
                     print(self.get_syntax())
                     printer.danger("\nenvironment must be set")
                     sys.exit(1)
-                if cl_params['ideliumwsBaseurl'] is None:
+                if cl_params["ideliumwsBaseurl"] is None:
                     print(self.get_syntax())
                     printer.danger("\nideliumwsBaseurl must be set")
                     sys.exit(1)
         self.configure_http(cl_params, printer)
         return {
-            'cl_params': cl_params,
+            "cl_params": cl_params,
         }
 
     @staticmethod
@@ -231,82 +235,91 @@ class InitIdelium():
         """Configure secure HTTP behavior for CLI and server modes."""
         try:
             timeout = (
-                float(cl_params['httpConnectTimeout']),
-                float(cl_params['httpReadTimeout']),
+                float(cl_params["httpConnectTimeout"]),
+                float(cl_params["httpReadTimeout"]),
             )
-            postman_newman_timeout = float(cl_params['postmanNewmanTimeout'])
+            postman_newman_timeout = float(cl_params["postmanNewmanTimeout"])
         except (TypeError, ValueError):
-            printer.danger('HTTP timeouts must be numbers')
+            printer.danger("HTTP timeouts must be numbers")
             sys.exit(1)
         if timeout[0] <= 0 or timeout[1] <= 0 or postman_newman_timeout <= 0:
-            printer.danger('HTTP timeouts must be greater than zero')
+            printer.danger("HTTP timeouts must be greater than zero")
             sys.exit(1)
         Connection.configure(
-            ca_bundle=cl_params['caBundle'],
-            insecure=cl_params['insecure'],
+            ca_bundle=cl_params["caBundle"],
+            insecure=cl_params["insecure"],
             timeout=timeout,
         )
-        if cl_params['insecure']:
-            printer.warning('TLS certificate verification is disabled by explicit request.')
+        if cl_params["insecure"]:
+            printer.warning(
+                "TLS certificate verification is disabled by explicit request."
+            )
 
     def load_parameters(self, cl_params, ideliumws, printer):
 
-        sys.path.append(cl_params['dir_idelium_scripts'] + "/" + cl_params['idProject'])
+        sys.path.append(cl_params["dir_idelium_scripts"] + "/" + cl_params["idProject"])
 
-        cl_params['api_idelium']=cl_params['ideliumwsBaseurl'] + '/api/ideliumcl/'
-        cl_params['printer']=printer
-        test_config=None
-        json_config=None
-        json_step_config=None
+        cl_params["api_idelium"] = cl_params["ideliumwsBaseurl"] + "/api/ideliumcl/"
+        cl_params["printer"] = printer
+        test_config = None
+        json_config = None
+        json_step_config = None
         test_config = ideliumws.get_configuration(cl_params)
         if test_config is False:
             return False
-        print('Environment:' + cl_params['environment'])
-        if cl_params['environment'] in test_config['environments']:
-            json_config=test_config['environments'][cl_params['environment']]
+        print("Environment:" + cl_params["environment"])
+        if cl_params["environment"] in test_config["environments"]:
+            json_config = test_config["environments"][cl_params["environment"]]
         else:
-            printer.danger('Environment "' + cl_params['environment']
-                            + '" or idProject ' + cl_params['idProject'] + ' not exist')
+            printer.danger(
+                'Environment "'
+                + cl_params["environment"]
+                + '" or idProject '
+                + cl_params["idProject"]
+                + " not exist"
+            )
             sys.exit(1)
-        if 'userAgent' in json_config:
-            cl_params['user_agent']=json_config['userAgent']
-        if 'isRealDevice' in json_config:
-            cl_params['isRealDevice']=json_config['isRealDevice']
-        if 'appiumServer' in json_config:
-            cl_params['appiumServer']=json_config['appiumServer']
-        if 'isRealDevice' in json_config:
-            cl_params['appiumDesiredCaps']=json_config['appiumDesiredCaps']
-        if cl_params['seleniumGridUrl'] is None and 'seleniumGridUrl' in json_config:
-            cl_params['seleniumGridUrl'] = json_config['seleniumGridUrl']
-        if (cl_params['seleniumGridCapabilities'] is None
-                and 'seleniumGridCapabilities' in json_config):
-            cl_params['seleniumGridCapabilities'] = json_config['seleniumGridCapabilities']
-        if isinstance(cl_params['seleniumGridCapabilities'], str):
+        if "userAgent" in json_config:
+            cl_params["user_agent"] = json_config["userAgent"]
+        if "isRealDevice" in json_config:
+            cl_params["isRealDevice"] = json_config["isRealDevice"]
+        if "appiumServer" in json_config:
+            cl_params["appiumServer"] = json_config["appiumServer"]
+        if "isRealDevice" in json_config:
+            cl_params["appiumDesiredCaps"] = json_config["appiumDesiredCaps"]
+        if cl_params["seleniumGridUrl"] is None and "seleniumGridUrl" in json_config:
+            cl_params["seleniumGridUrl"] = json_config["seleniumGridUrl"]
+        if (
+            cl_params["seleniumGridCapabilities"] is None
+            and "seleniumGridCapabilities" in json_config
+        ):
+            cl_params["seleniumGridCapabilities"] = json_config[
+                "seleniumGridCapabilities"
+            ]
+        if isinstance(cl_params["seleniumGridCapabilities"], str):
             try:
-                cl_params['seleniumGridCapabilities'] = json.loads(
-                    cl_params['seleniumGridCapabilities']
+                cl_params["seleniumGridCapabilities"] = json.loads(
+                    cl_params["seleniumGridCapabilities"]
                 )
             except json.JSONDecodeError:
-                printer.danger('seleniumGridCapabilities must be a JSON object')
+                printer.danger("seleniumGridCapabilities must be a JSON object")
                 sys.exit(1)
-        if (cl_params['seleniumGridCapabilities'] is not None
-                and not isinstance(cl_params['seleniumGridCapabilities'], dict)):
-            printer.danger('seleniumGridCapabilities must be a JSON object')
+        if cl_params["seleniumGridCapabilities"] is not None and not isinstance(
+            cl_params["seleniumGridCapabilities"], dict
+        ):
+            printer.danger("seleniumGridCapabilities must be a JSON object")
             sys.exit(1)
-        if cl_params['idProject'] is not None:
-            json_config['projectId'] = cl_params['idProject']
+        if cl_params["idProject"] is not None:
+            json_config["projectId"] = cl_params["idProject"]
 
-        json_step_config=test_config['configStep']
-        if cl_params['idProject'] is not None and json_step_config is not None:
-            json_step_config['idProject']=cl_params['idProject']
-        if 'device' in json_config:
-            cl_params['device'] = json_config['device']
-        if cl_params['url'] is not None:
-            json_config['url']=cl_params['url']
-        cl_params['json_config']=json_config
-        cl_params['json_step_config']=json_step_config
+        json_step_config = test_config["configStep"]
+        if cl_params["idProject"] is not None and json_step_config is not None:
+            json_step_config["idProject"] = cl_params["idProject"]
+        if "device" in json_config:
+            cl_params["device"] = json_config["device"]
+        if cl_params["url"] is not None:
+            json_config["url"] = cl_params["url"]
+        cl_params["json_config"] = json_config
+        cl_params["json_step_config"] = json_step_config
 
-        return {
-            'cl_params': cl_params,
-            'test_config': test_config
-        }
+        return {"cl_params": cl_params, "test_config": test_config}

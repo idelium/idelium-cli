@@ -65,6 +65,21 @@ class StartManager:
         )
 
     @staticmethod
+    def _postman_collection_stats(item):
+        """Return safe, non-sensitive diagnostics for a Postman collection item."""
+        stats = {"requests": 0, "events": 0}
+        if not isinstance(item, dict):
+            return stats
+        if "request" in item:
+            stats["requests"] += 1
+        stats["events"] += len(item.get("event") or [])
+        for child in item.get("item") or []:
+            child_stats = StartManager._postman_collection_stats(child)
+            stats["requests"] += child_stats["requests"]
+            stats["events"] += child_stats["events"]
+        return stats
+
+    @staticmethod
     def _postman_requires_newman(postman_config):
         """Detect collection payloads that need the full Postman runtime."""
         if postman_config.get("iterationData") or postman_config.get("dataFile"):
@@ -110,6 +125,19 @@ class StartManager:
                     runtime in StartManager.POSTMAN_AUTO_RUNTIMES
                     and StartManager._postman_requires_newman(postman_config)
                 )
+                if config["is_debug"] is True:
+                    stats = StartManager._postman_collection_stats(
+                        postman_config.get("collection") or {}
+                    )
+                    runner = "newman" if use_newman else "safe"
+                    printer.print_important_text(
+                        "Postman runtime: requested={}, runner={}, requests={}, events={}".format(
+                            runtime,
+                            runner,
+                            stats["requests"],
+                            stats["events"],
+                        )
+                    )
                 if use_newman:
                     postman = PostmanNewmanCollection(
                         timeout=float(config.get("postmanNewmanTimeout", 300))
@@ -119,6 +147,25 @@ class StartManager:
                 postman_data = postman.start_postman_test(
                     object_step["collection"], config["is_debug"]
                 )
+                if config["is_debug"] is True:
+                    for result in postman_data:
+                        status_label = "PASSED" if result["passed"] else "FAILED"
+                        printer.print_important_text(
+                            "Postman result: {} {} {} {}".format(
+                                status_label,
+                                result.get("method", ""),
+                                result.get("status", ""),
+                                result.get("name", "Unnamed request"),
+                            )
+                        )
+                        for assertion in result.get("assertions", []):
+                            if assertion.get("passed") is False:
+                                printer.danger(
+                                    "{}: {}".format(
+                                        assertion.get("name", "postman assertion"),
+                                        assertion.get("message", "Assertion failed."),
+                                    )
+                                )
                 typeOfStep = "postman"
                 if any(not result["passed"] for result in postman_data):
                     status = "2"

@@ -39,6 +39,31 @@ class CliArgumentParsingTest(unittest.TestCase):
             "TLS certificate verification is disabled by explicit request."
         )
 
+    def test_accepts_test_mode_as_flag(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject",
+                "1",
+                "--idCycle",
+                "2",
+                "--environment",
+                "demo",
+                "--ideliumKey",
+                "key==",
+                "--ideliumwsBaseurl",
+                "https://localhost",
+                "--test",
+            ],
+            Mock(),
+            printer,
+        )
+
+        self.assertTrue(defined["cl_params"]["test"])
+
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
         printer = Mock()

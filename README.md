@@ -349,8 +349,9 @@ preferred.
 
 The Newman runtime is optional and requires the `newman` executable to be
 available on `PATH` on the machine running `idelium`. If Newman is missing, the
-step fails with a clear Idelium result instead of crashing the process. Use
-`--postmanNewmanTimeout=<seconds>` to bound Newman execution time.
+step fails with a red console error that explains how to install Newman and how
+to verify the executable path. Use `--postmanNewmanTimeout=<seconds>` to bound
+Newman execution time.
 
 When `postman_auto` detects a collection that requires Newman, install Newman on
 the execution host before running the CLI:
@@ -358,6 +359,21 @@ the execution host before running the CLI:
 ```bash
 npm install -g newman
 ```
+
+For local compatibility debugging, run the CLI with `--verbose` to print the
+selected Postman runner and safe collection statistics. To preserve the exact
+collection, environment, iteration data, and Newman JSON report used by the CLI,
+set `IDELIUM_POSTMAN_DEBUG_DIR` to a protected local directory:
+
+```bash
+mkdir -p /tmp/idelium-postman-debug
+IDELIUM_POSTMAN_DEBUG_DIR=/tmp/idelium-postman-debug \
+  idelium --idCycle=2 --idProject=3 --environment=envpost \
+  --ideliumwsBaseurl=https://localhost --insecure --verbose --test
+```
+
+The debug directory may contain imported collection data, so do not commit it or
+share it without reviewing the content.
 
 Use `postman_newman` in the uploaded Postman step payload:
 
