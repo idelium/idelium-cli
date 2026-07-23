@@ -16,7 +16,7 @@ class StartManager:
     """Start manager"""
 
     POSTMAN_NEWMAN_RUNTIMES = {"newman", "postman_newman"}
-    POSTMAN_AUTO_RUNTIMES = {"auto", "postman_auto"}
+    POSTMAN_AUTO_RUNTIMES = {"auto", "postman", "postman_auto"}
 
     @staticmethod
     def load_module(name):

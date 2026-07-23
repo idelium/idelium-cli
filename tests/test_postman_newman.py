@@ -208,6 +208,7 @@ class PostmanNewmanManagerTest(unittest.TestCase):
         config = self.manager_config(
             {
                 "stepType": "postman_collection",
+                "runtime": "postman",
                 "collection": {
                     "collection": {
                         "item": [

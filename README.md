@@ -310,6 +310,8 @@ Idelium supports three Postman execution modes:
   request collections and automatically switches to Newman when the collection
   uses Postman runtime features such as `pm.test`, pre-request scripts, test
   scripts, or iteration data.
+- `postman` is accepted as an alias for `postman_auto` for steps created by the
+  Idelium web application.
 - `postman_safe` is the Python runner. It executes Postman Collection
   v2.1 requests, including requests inside nested folders, without running
   arbitrary scripts.
