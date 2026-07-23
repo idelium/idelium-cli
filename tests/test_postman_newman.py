@@ -185,7 +185,7 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
         printer_mock.danger.assert_called_once()
         self.assertIn("npm install -g newman", printer_mock.danger.call_args.args[0])
 
-    def test_newman_failures_are_mapped_to_failed_assertions(self):
+    def test_newman_failures_do_not_duplicate_failed_execution_assertions(self):
         def subprocess_runner(command, **kwargs):
             report_path = command[command.index("--reporter-json-export") + 1]
             with open(report_path, "w", encoding="utf-8") as file_obj:
@@ -214,6 +214,54 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
                                 {
                                     "source": {"id": "request-1"},
                                     "at": "test-script",
+                                    "error": {
+                                        "message": "expected 500 to equal 200"
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                    file_obj,
+                )
+            return SimpleNamespace(returncode=1)
+
+        runner = PostmanNewmanCollection(
+            binary_resolver=lambda binary: "/usr/local/bin/" + binary,
+            subprocess_runner=subprocess_runner,
+        )
+
+        results = runner.start_postman_test(
+            {"collection": {"info": {"name": "Postman Echo"}, "item": []}}
+        )
+
+        self.assertFalse(results[0]["passed"])
+        self.assertEqual(
+            ["status is 200"],
+            [assertion["name"] for assertion in results[0]["assertions"]],
+        )
+
+    def test_newman_failures_are_mapped_when_execution_has_no_failed_assertions(self):
+        def subprocess_runner(command, **kwargs):
+            report_path = command[command.index("--reporter-json-export") + 1]
+            with open(report_path, "w", encoding="utf-8") as file_obj:
+                json.dump(
+                    {
+                        "run": {
+                            "executions": [
+                                {
+                                    "item": {"id": "request-1", "name": "Echo"},
+                                    "request": {
+                                        "method": "POST",
+                                        "url": {"raw": "https://example.test"},
+                                    },
+                                    "response": {"code": 200, "stream": "{}"},
+                                    "assertions": [],
+                                }
+                            ],
+                            "failures": [
+                                {
+                                    "source": {"id": "request-1"},
+                                    "at": "test-script",
                                     "error": {"message": "script failed"},
                                 }
                             ],
@@ -234,9 +282,111 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
 
         self.assertFalse(results[0]["passed"])
         self.assertEqual(
-            ["status is 200", "test-script"],
+            ["test-script"],
             [assertion["name"] for assertion in results[0]["assertions"]],
         )
+
+    def test_postman_echo_report_maps_only_real_failed_assertions(self):
+        report = {
+            "run": {
+                "executions": [
+                    {
+                        "item": {"id": "delete-cookies", "name": "Delete Cookies"},
+                        "request": {
+                            "method": "GET",
+                            "url": {"raw": "https://postman-echo.com/cookies/delete"},
+                        },
+                        "response": {"code": 200, "stream": "{}"},
+                        "assertions": [
+                            {"assertion": "Status code is 302 or 200"},
+                            {"assertion": "Body contains cookies"},
+                            {
+                                "assertion": "Body contains cookie foo1",
+                                "error": {"message": "expected false to be truthy"},
+                            },
+                            {
+                                "assertion": "Body contains cookie foo2",
+                                "error": {"message": "expected false to be truthy"},
+                            },
+                        ],
+                    },
+                    {
+                        "item": {
+                            "id": "between-timestamps",
+                            "name": "Between timestamps",
+                        },
+                        "request": {
+                            "method": "GET",
+                            "url": {"raw": "https://postman-echo.com/time/between"},
+                        },
+                        "response": {"code": 200, "stream": "{}"},
+                        "assertions": [
+                            {
+                                "assertion": "Comparsion was correct",
+                                "error": {"message": "expected false to be truthy"},
+                            },
+                            {"assertion": "Status code is 200"},
+                        ],
+                    },
+                    {
+                        "item": {
+                            "id": "transform-v1-v2",
+                            "name": "Transform collection from format v1 to v2",
+                        },
+                        "request": {
+                            "method": "POST",
+                            "url": {
+                                "raw": "https://postman-echo.com/transform/collection?from=1&to=2"
+                            },
+                        },
+                        "response": {"code": 404, "stream": ""},
+                        "assertions": [],
+                    },
+                ],
+                "failures": [
+                    {
+                        "source": {"id": "delete-cookies"},
+                        "at": "assertion:2 in test-script",
+                        "error": {"message": "expected false to be truthy"},
+                    },
+                    {
+                        "source": {"id": "delete-cookies"},
+                        "at": "assertion:3 in test-script",
+                        "error": {"message": "expected false to be truthy"},
+                    },
+                    {
+                        "source": {"id": "between-timestamps"},
+                        "at": "assertion:1 in test-script",
+                        "error": {"message": "expected false to be truthy"},
+                    },
+                ],
+            }
+        }
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as file_obj:
+            json.dump(report, file_obj)
+            file_obj.flush()
+
+            results = PostmanNewmanCollection()._parse_report(file_obj.name, 1)
+
+        failed_assertions = [
+            assertion
+            for result in results
+            for assertion in result["assertions"]
+            if assertion["passed"] is False
+        ]
+
+        self.assertEqual(3, len(failed_assertions))
+        self.assertEqual(
+            [
+                "Body contains cookie foo1",
+                "Body contains cookie foo2",
+                "Comparsion was correct",
+            ],
+            [assertion["name"] for assertion in failed_assertions],
+        )
+        self.assertTrue(results[2]["passed"])
+        self.assertEqual("404", results[2]["status"])
 
     def test_missing_report_fails_safely(self):
         runner = PostmanNewmanCollection(

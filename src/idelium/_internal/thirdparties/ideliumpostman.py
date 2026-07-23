@@ -507,9 +507,13 @@ class PostmanNewmanCollection:
         request = execution.get("request") or {}
         response = execution.get("response")
         assertions = self._assertions(execution)
+        has_failed_assertions = any(
+            assertion.get("passed") is False for assertion in assertions
+        )
         key = self._execution_key(execution)
-        for failure in failures.get(str(key), []) if key else []:
-            assertions.append(self._failure_assertion(failure))
+        if not has_failed_assertions:
+            for failure in failures.get(str(key), []) if key else []:
+                assertions.append(self._failure_assertion(failure))
         if not assertions:
             assertions.append(
                 {
