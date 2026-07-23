@@ -199,7 +199,7 @@ class PostmanNewmanManagerTest(unittest.TestCase):
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")
     @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
-    def test_postman_auto_runtime_uses_newman_for_postman_scripts(
+    def test_postman_runtime_uses_newman_for_web_imported_collections(
         self, newman_class, safe_class
     ):
         newman_class.return_value.start_postman_test.return_value = [
@@ -210,6 +210,48 @@ class PostmanNewmanManagerTest(unittest.TestCase):
                 "stepType": "postman_collection",
                 "runtime": "postman",
                 "collection": {
+                    "collection": {
+                        "item": [
+                            {
+                                "name": "scripted request",
+                                "request": {
+                                    "method": "GET",
+                                    "url": "https://example.test",
+                                },
+                                "event": [
+                                    {
+                                        "listen": "test",
+                                        "script": {
+                                            "exec": ["pm.test('status', () => {})"]
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        )
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("1", result["status"])
+        newman_class.return_value.start_postman_test.assert_called_once()
+        safe_class.assert_not_called()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_auto_runtime_uses_newman_for_postman_scripts(
+        self, newman_class, safe_class
+    ):
+        newman_class.return_value.start_postman_test.return_value = [
+            {"passed": True, "assertions": [{"name": "pm.test", "passed": True}]}
+        ]
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "collection": {
+                    "runtime": "postman_auto",
                     "collection": {
                         "item": [
                             {
