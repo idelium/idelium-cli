@@ -214,9 +214,7 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
                                 {
                                     "source": {"id": "request-1"},
                                     "at": "test-script",
-                                    "error": {
-                                        "message": "expected 500 to equal 200"
-                                    },
+                                    "error": {"message": "expected 500 to equal 200"},
                                 }
                             ],
                         }
