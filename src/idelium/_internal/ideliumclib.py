@@ -66,6 +66,8 @@ class InitIdelium():
 
     For Example: 
 
+    Options accept both --name=value and --name value forms.
+
     default reporting service: idelium --ideliumKey=1234 --idCycle=2 --idProject=8 --environment=prod
 
     working with jira/zephyr: idelium --reportingService=zephyr --idJira=prj-1234 --username=user --password=secret --environment=prod.json --useragent='apple 1134'
@@ -125,37 +127,67 @@ class InitIdelium():
             'ideliumServer': False,
             'ideliumServerPort': 8691,
         }
+    @staticmethod
+    def _parse_cli_args(args, known_parameters, flag_parameters, printer):
+        tokens = list(args)
+        if tokens and not tokens[0].startswith("--"):
+            tokens = tokens[1:]
+        parsed_args = []
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if not token.startswith("--"):
+                print(InitIdelium.get_syntax())
+                printer.danger(token + ": is not a valid option")
+                sys.exit(1)
+            option = token[2:]
+            if "=" in option:
+                command, value = option.split("=", 1)
+            else:
+                command = option
+                if command in flag_parameters or command in {"help", "verbose"}:
+                    value = None
+                elif command in known_parameters:
+                    if index + 1 >= len(tokens) or tokens[index + 1].startswith("--"):
+                        print(InitIdelium.get_syntax())
+                        printer.danger(command + " requires a value")
+                        sys.exit(1)
+                    value = tokens[index + 1]
+                    index += 1
+                else:
+                    value = None
+            parsed_args.append((command, value, token))
+            index += 1
+        return parsed_args
+
     def define_parameters(self,args,ideliumws,printer):
         ''' set all necessary parameters '''
         cl_params= self.get_default_parameters()
         check_required=self.get_reguired_parameters()
         cl_params['dir_idelium_scripts'] = tempfile.mkdtemp()
-        count=0
-        for i in args:
-            array_command=i.split("=", 1)
-            command=array_command[0][2:]
+        flag_parameters = {"forcedownload", "ideliumServer", "insecure"}
+        parsed_args = self._parse_cli_args(args, cl_params, flag_parameters, printer)
+        for command, value, token in parsed_args:
             if command in cl_params:
                 if command == 'ideliumKey':
-                    cl_params['ideliumKey'] = array_command[1]
-                elif command in {"forcedownload", "ideliumServer", "insecure"}:
+                    cl_params['ideliumKey'] = value
+                elif command in flag_parameters:
                     cl_params[command] = True
                 elif command == 'ideliumServerPort': 
-                    cl_params['ideliumServerPort'] = int(array_command[1])
+                    cl_params['ideliumServerPort'] = int(value)
                 else:
-                    cl_params[command]=array_command[1]
+                    cl_params[command]=value
                 if command in check_required:
                     check_required[command]=1
-            elif array_command[0] == "--verbose":
+            elif command == "verbose":
                 cl_params['is_debug'] = True
-            elif array_command[0] == "--help":
+            elif command == "help":
                 print(self.get_syntax())
                 sys.exit(0)
             else:
-                if count > 0:
-                    print (self.get_syntax())
-                    print("\n" + array_command[0] + ": is not a valid option")
-                    sys.exit(1)
-            count += 1
+                print (self.get_syntax())
+                print("\n" + token + ": is not a valid option")
+                sys.exit(1)
         count_req=0
         for i in check_required:
             count_req=count_req + check_required[i]

@@ -108,7 +108,8 @@ a local credentials file.
 
 ## Command-line options
 
-Options use `--name=value` unless shown as a flag.
+Options accept both `--name=value` and `--name value` forms unless shown as a
+flag.
 
 ### Execution selection
 
