@@ -84,9 +84,7 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
         self.assertEqual(12, kwargs["timeout"])
         self.assertTrue(results[0]["passed"])
         self.assertEqual("200", results[0]["status"])
-        self.assertEqual(
-            "https://example.test?token=%5BREDACTED%5D", results[0]["url"]
-        )
+        self.assertEqual("https://example.test?token=%5BREDACTED%5D", results[0]["url"])
         self.assertEqual(
             {"ok": True, "access_token": "[REDACTED]"},
             json.loads(results[0]["response"]),

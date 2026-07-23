@@ -49,6 +49,14 @@ class MetadataConsistencyTest(unittest.TestCase):
 
         self.assertEqual(internal["IDELIUM_VERSION"], module.__version__)
 
+    def test_release_notes_are_packaged_for_current_version(self):
+        internal = runpy.run_path(str(ROOT / "src/idelium/_internal/main.py"))
+        release_notes = (ROOT / "NEWS.rst").read_text(encoding="utf-8")
+        manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+
+        self.assertIn(internal["IDELIUM_VERSION"], release_notes)
+        self.assertIn("include NEWS.rst", manifest)
+
     def test_local_test_script_is_documented_and_packaged(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
