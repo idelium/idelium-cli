@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 from requests_hawk import HawkAuth
@@ -120,7 +120,7 @@ class PostmanCollection:
     def _request_url(self, request):
         url = request.get("url", "")
         if isinstance(url, dict):
-            url = url.get("raw", "")
+            return self._substitute(PostmanNewmanCollection._request_url(request))
         return self._substitute(url)
 
     def _request_headers(self, request):
@@ -420,7 +420,29 @@ class PostmanNewmanCollection:
     def _request_url(request):
         url = request.get("url", "")
         if isinstance(url, dict):
-            return str(url.get("raw", ""))
+            if url.get("raw"):
+                return str(url.get("raw", ""))
+            protocol = str(url.get("protocol") or "")
+            host = url.get("host") or []
+            path = url.get("path") or []
+            query = url.get("query") or []
+            host_value = ".".join(str(part) for part in host)
+            path_value = "/".join(quote(str(part), safe="") for part in path)
+            query_values = [
+                (item["key"], item.get("value", ""))
+                for item in query
+                if item.get("key") and not item.get("disabled", False)
+            ]
+            query_value = urlencode(query_values)
+            scheme = protocol + "://" if protocol else ""
+            path_separator = "/" if host_value and path_value else ""
+            return "{}{}{}{}{}".format(
+                scheme,
+                host_value,
+                path_separator,
+                path_value,
+                "?" + query_value if query_value else "",
+            )
         return str(url)
 
     @staticmethod

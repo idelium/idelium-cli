@@ -294,7 +294,15 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
                         "item": {"id": "delete-cookies", "name": "Delete Cookies"},
                         "request": {
                             "method": "GET",
-                            "url": {"raw": "https://postman-echo.com/cookies/delete"},
+                            "url": {
+                                "protocol": "https",
+                                "host": ["postman-echo", "com"],
+                                "path": ["cookies", "delete"],
+                                "query": [
+                                    {"key": "foo1", "value": ""},
+                                    {"key": "foo2", "value": ""},
+                                ],
+                            },
                         },
                         "response": {"code": 200, "stream": "{}"},
                         "assertions": [
@@ -387,6 +395,10 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
         )
         self.assertTrue(results[2]["passed"])
         self.assertEqual("404", results[2]["status"])
+        self.assertEqual(
+            "https://postman-echo.com/cookies/delete?foo1=&foo2=",
+            results[0]["url"],
+        )
 
     def test_missing_report_fails_safely(self):
         runner = PostmanNewmanCollection(
