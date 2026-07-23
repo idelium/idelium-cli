@@ -89,6 +89,15 @@ class HttpClient:
         kwargs.setdefault("verify", self.verify)
         try:
             response = self.session.request(method, url, **kwargs)
+        except requests.exceptions.SSLError as error:
+            raise HttpTransportError(
+                "{} request failed for {}: TLS certificate verification failed. "
+                "Use --caBundle with a trusted CA bundle, or --insecure only for "
+                "local development with self-signed certificates.".format(
+                    method,
+                    self.redact_url(url),
+                )
+            ) from error
         except requests.RequestException as error:
             raise HttpTransportError(
                 "{} request failed for {}".format(method, self.redact_url(url))

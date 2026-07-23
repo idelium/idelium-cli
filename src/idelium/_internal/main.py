@@ -14,6 +14,7 @@ from idelium._internal.ideliumws import IdeliumWs
 from idelium._internal.ideliumclib import InitIdelium
 from idelium._internal.thirdparties.ideliumzephyr import ZephyrConnection
 from idelium._internal.commons.ideliumprinter import InitPrinter
+from idelium._internal.commons.connection import HttpTransportError
 
 
 idelium=StartManager()
@@ -63,8 +64,12 @@ def main(args: Optional[List[str]] = None) -> int:
     define_parameters= idelium_cl_lib.define_parameters(args,ideliumws,printer)
     cl_params=define_parameters['cl_params']
 
-    if cl_params['ideliumServer'] is False:
-         start_test(cl_params)
-    else:
-        start_server(cl_params)
+    try:
+        if cl_params['ideliumServer'] is False:
+             start_test(cl_params)
+        else:
+            start_server(cl_params)
+    except HttpTransportError as error:
+        printer.danger(str(error))
+        return 2
     return 0

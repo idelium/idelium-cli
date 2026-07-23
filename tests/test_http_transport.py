@@ -6,6 +6,8 @@ import warnings
 from contextlib import redirect_stdout
 from unittest.mock import Mock
 
+import requests
+
 from idelium._internal.commons.connection import (
     Connection,
     HttpClient,
@@ -62,6 +64,22 @@ class HttpTransportTest(unittest.TestCase):
         with self.assertRaises(HttpTransportError) as http_error:
             client.request("GET", "https://example.test")
         self.assertNotIn("secret failure body", str(http_error.exception))
+
+    def test_tls_failures_return_actionable_error_without_trace_details(self):
+        session = Mock()
+        session.request.side_effect = requests.exceptions.SSLError(
+            "certificate verify failed: self-signed certificate"
+        )
+        client = HttpClient(session=session)
+
+        with self.assertRaises(HttpTransportError) as transport_error:
+            client.request("GET", "https://localhost/api/ideliumcl/testcycle/1")
+
+        message = str(transport_error.exception)
+        self.assertIn("TLS certificate verification failed", message)
+        self.assertIn("--caBundle", message)
+        self.assertIn("--insecure", message)
+        self.assertNotIn("Traceback", message)
 
     def test_retries_are_bounded_and_only_allow_idempotent_methods(self):
         session = Mock()
