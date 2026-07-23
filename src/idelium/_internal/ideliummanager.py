@@ -3,10 +3,12 @@
 from __future__ import absolute_import
 import sys
 import importlib.util
+import shutil
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
 from idelium._internal.wrappers.ideliumappium import IdeliumAppium
 from idelium._internal.thirdparties.ideliumpostman import (
+    NEWMAN_MISSING_MESSAGE,
     PostmanCollection,
     PostmanNewmanCollection,
 )
@@ -17,6 +19,27 @@ class StartManager:
 
     POSTMAN_NEWMAN_RUNTIMES = {"newman", "postman", "postman_newman"}
     POSTMAN_AUTO_RUNTIMES = {"auto", "postman_auto"}
+
+    @staticmethod
+    def _postman_missing_newman_result():
+        return [
+            {
+                "name": "Newman",
+                "response": "",
+                "status": "0",
+                "method": "NEWMAN",
+                "url": "",
+                "time": 0,
+                "passed": False,
+                "assertions": [
+                    {
+                        "name": "newman",
+                        "passed": False,
+                        "message": NEWMAN_MISSING_MESSAGE,
+                    }
+                ],
+            }
+        ]
 
     @staticmethod
     def load_module(name):
@@ -139,14 +162,21 @@ class StartManager:
                         )
                     )
                 if use_newman:
-                    postman = PostmanNewmanCollection(
-                        timeout=float(config.get("postmanNewmanTimeout", 300))
-                    )
+                    if not shutil.which("newman"):
+                        printer.danger(NEWMAN_MISSING_MESSAGE)
+                        postman_data = StartManager._postman_missing_newman_result()
+                    else:
+                        postman = PostmanNewmanCollection(
+                            timeout=float(config.get("postmanNewmanTimeout", 300))
+                        )
+                        postman_data = postman.start_postman_test(
+                            object_step["collection"], config["is_debug"]
+                        )
                 else:
                     postman = PostmanCollection(verify=verify, timeout=timeout)
-                postman_data = postman.start_postman_test(
-                    object_step["collection"], config["is_debug"]
-                )
+                    postman_data = postman.start_postman_test(
+                        object_step["collection"], config["is_debug"]
+                    )
                 if config["is_debug"] is True:
                     for result in postman_data:
                         status_label = "PASSED" if result["passed"] else "FAILED"

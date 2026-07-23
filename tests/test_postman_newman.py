@@ -253,6 +253,16 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
 
 
 class PostmanNewmanManagerTest(unittest.TestCase):
+    def setUp(self):
+        self.which_patcher = patch(
+            "idelium._internal.ideliummanager.shutil.which",
+            return_value="/usr/local/bin/newman",
+        )
+        self.which_patcher.start()
+
+    def tearDown(self):
+        self.which_patcher.stop()
+
     def manager_config(self, step):
         return {
             "wrapper": Mock(),
@@ -545,6 +555,41 @@ class PostmanNewmanManagerTest(unittest.TestCase):
         )
         config["printer"].print_important_text.assert_not_called()
         safe_class.assert_not_called()
+
+    @patch("idelium._internal.ideliummanager.PostmanCollection")
+    @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")
+    def test_postman_runtime_preflight_prints_missing_newman_without_verbose(
+        self, newman_class, safe_class
+    ):
+        self.which_patcher.stop()
+        self.which_patcher = patch(
+            "idelium._internal.ideliummanager.shutil.which",
+            return_value=None,
+        )
+        which = self.which_patcher.start()
+        config = self.manager_config(
+            {
+                "stepType": "postman_collection",
+                "runtime": "postman",
+                "collection": {"collection": {"item": []}},
+            }
+        )
+        config["is_debug"] = False
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("2", result["status"])
+        self.assertEqual("postman", result["type"])
+        self.assertFalse(result["postman_data"][0]["passed"])
+        config["printer"].danger.assert_any_call(
+            PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
+        )
+        config["printer"].danger.assert_any_call(
+            "newman: " + PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
+        )
+        newman_class.assert_not_called()
+        safe_class.assert_not_called()
+        which.assert_called_once_with("newman")
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")
     @patch("idelium._internal.ideliummanager.PostmanNewmanCollection")

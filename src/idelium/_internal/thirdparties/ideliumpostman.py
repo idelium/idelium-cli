@@ -21,6 +21,13 @@ from idelium._internal.commons.connection import HttpClient, HttpTransportError
 
 printer = InitPrinter()
 
+NEWMAN_MISSING_MESSAGE = (
+    "Newman is required to run this Postman collection but was not found on PATH. "
+    "Install it with `npm install -g newman`, then verify it with `newman --version`. "
+    "If it is already installed, make sure the directory containing the `newman` "
+    "executable is available in the PATH used by the idelium command."
+)
+
 
 class PostmanCollection:
     """Run collection requests without executing arbitrary Postman scripts."""
@@ -322,12 +329,7 @@ class PostmanCollection:
 class PostmanNewmanCollection:
     """Run Postman collections through Newman and map reports to Idelium results."""
 
-    NEWMAN_MISSING_MESSAGE = (
-        "Newman is required to run this Postman collection but was not found on PATH. "
-        "Install it with `npm install -g newman`, then verify it with `newman --version`. "
-        "If it is already installed, make sure the directory containing the `newman` "
-        "executable is available in the PATH used by the idelium command."
-    )
+    NEWMAN_MISSING_MESSAGE = NEWMAN_MISSING_MESSAGE
 
     def __init__(
         self,
