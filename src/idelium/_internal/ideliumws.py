@@ -368,6 +368,7 @@ class IdeliumWs:
                     postman_data = object_return["postman_data"]
                     typeofstep = object_return["type"]
                     step_failed = object_return["step_failed"]
+                    bidi_artifacts = config.pop("bidiArtifacts", [])
                     dependency_failed = object_return.get("dependency_failed", False)
                     config["status"] = status
                     config["step_failed"] = step_failed
@@ -444,6 +445,7 @@ class IdeliumWs:
                             typeofstep,
                             postman_data,
                             step_failed,
+                            bidi_artifacts,
                         )
                     )
                 else:
@@ -487,6 +489,7 @@ class IdeliumWs:
         typeofstep,
         postman_data,
         step_failed,
+        artifacts=None,
     ):
         diagnostics = []
         if status in ("2", "5") and step_failed:
@@ -503,7 +506,7 @@ class IdeliumWs:
             "status": status,
             "durationMilliseconds": duration_ms,
             "diagnostics": diagnostics,
-            "artifacts": [],
+            "artifacts": artifacts or [],
             "postmanResults": postman_data or [],
         }
 

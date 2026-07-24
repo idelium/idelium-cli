@@ -125,6 +125,11 @@ class IdeliumSelenium:
             config["bidiLifecycle"] = lifecycle.as_dict()
             active_printer = printer_instance or printer
             active_printer.danger(str(err))
+        artifact = lifecycle.console_artifact(
+            limit=int(config.get("bidiConsoleMaxEvents") or 100)
+        )
+        if artifact is not None:
+            config.setdefault("bidiArtifacts", []).append(artifact)
 
     @staticmethod
     def _local_driver(factory, manager, options=None, service_class=None):

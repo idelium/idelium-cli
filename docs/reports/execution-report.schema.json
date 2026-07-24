@@ -81,7 +81,11 @@
       "properties": {
         "name": {"type": "string"},
         "type": {"type": "string"},
-        "path": {"type": "string"}
+        "path": {"type": "string"},
+        "data": {
+          "description": "Optional bounded structured artifact payload.",
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        }
       }
     },
     "postmanResult": {

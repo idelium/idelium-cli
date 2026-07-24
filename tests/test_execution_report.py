@@ -168,6 +168,32 @@ class ExecutionReportTest(unittest.TestCase):
             self.assertTrue(markdown_path.exists())
             self.assertTrue(junit_path.exists())
 
+    def test_structured_artifact_data_is_schema_valid_and_redacted(self):
+        events = self._sample_events()
+        events[0]["steps"][0]["artifacts"].append(
+            {
+                "name": "bidi-console-events",
+                "type": "application/vnd.idelium.bidi.console+json",
+                "path": "",
+                "data": {
+                    "schemaVersion": "1.0",
+                    "events": [{"text": "authorization=Bearer abc123"}],
+                },
+            }
+        )
+
+        report = build_execution_report(
+            events,
+            config={"idProject": "3", "idCycle": "2", "environment": "envpost"},
+            exit_code=1,
+        )
+
+        schema = json.loads(REPORT_SCHEMA.read_text(encoding="utf-8"))
+        Draft202012Validator(schema).validate(report)
+        serialized = json.dumps(report)
+        self.assertNotIn("abc123", serialized)
+        self.assertIn("authorization=[REDACTED]", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()

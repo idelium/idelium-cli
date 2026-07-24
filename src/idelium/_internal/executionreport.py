@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from idelium._internal.bidi import redact_bidi_value
+
 
 REPORT_SCHEMA_VERSION = "1.0"
 MAX_FIELD_LENGTH = 4096
 MAX_ARTIFACTS_PER_STEP = 20
+MAX_ARTIFACT_DATA_LIST_ITEMS = 100
 _SENSITIVE_KEYS = (
     "authorization",
     "cookie",
@@ -247,7 +250,7 @@ def render_html_report(report: dict[str, Any]) -> str:
                 "<tr>"
                 f"<td>{_escape(test.get('name'))}</td>"
                 f"<td>{_escape(step.get('name'))}</td>"
-                f"<td><span class=\"status {step.get('status')}\">{_escape(step.get('status'))}</span></td>"
+                f'<td><span class="status {step.get("status")}">{_escape(step.get("status"))}</span></td>'
                 f"<td>{int(step.get('durationMilliseconds', 0))}</td>"
                 f"<td>{diagnostics or '&mdash;'}</td>"
                 f"<td>{artifacts or '&mdash;'}</td>"
@@ -283,13 +286,13 @@ def render_html_report(report: dict[str, Any]) -> str:
 <body>
 <main>
   <h1>Idelium Execution Report</h1>
-  <div class="meta">Generated at {_escape(report.get('generatedAt'))} for project {_escape(run.get('projectId'))}, cycle {_escape(run.get('cycleId'))}, environment {_escape(run.get('environment'))}.</div>
+  <div class="meta">Generated at {_escape(report.get("generatedAt"))} for project {_escape(run.get("projectId"))}, cycle {_escape(run.get("cycleId"))}, environment {_escape(run.get("environment"))}.</div>
   <section class="cards" aria-label="Run summary">
-    <div class="card">Status<strong>{_escape(run.get('status'))}</strong></div>
-    <div class="card">Tests<strong>{int(summary.get('tests', 0))}</strong></div>
-    <div class="card">Passed<strong>{int(summary.get('passed', 0))}</strong></div>
-    <div class="card">Failed<strong>{int(summary.get('failed', 0))}</strong></div>
-    <div class="card">Skipped<strong>{int(summary.get('skipped', 0))}</strong></div>
+    <div class="card">Status<strong>{_escape(run.get("status"))}</strong></div>
+    <div class="card">Tests<strong>{int(summary.get("tests", 0))}</strong></div>
+    <div class="card">Passed<strong>{int(summary.get("passed", 0))}</strong></div>
+    <div class="card">Failed<strong>{int(summary.get("failed", 0))}</strong></div>
+    <div class="card">Skipped<strong>{int(summary.get("skipped", 0))}</strong></div>
   </section>
   <table>
     <thead>
@@ -324,7 +327,9 @@ def _normalize_step(step: dict[str, Any]) -> dict[str, Any]:
         "type": _safe_string(step.get("type")),
         "status": _normalize_status(step.get("status")),
         "durationMilliseconds": max(0, int(step.get("durationMilliseconds") or 0)),
-        "diagnostics": [_normalize_diagnostic(diagnostic) for diagnostic in diagnostics],
+        "diagnostics": [
+            _normalize_diagnostic(diagnostic) for diagnostic in diagnostics
+        ],
         "artifacts": [
             _normalize_artifact(artifact)
             for artifact in (step.get("artifacts") or [])[:MAX_ARTIFACTS_PER_STEP]
@@ -375,12 +380,15 @@ def _normalize_diagnostic(diagnostic: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _normalize_artifact(artifact: dict[str, Any]) -> dict[str, str]:
-    return {
+def _normalize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
+    normalized = {
         "name": _safe_string(artifact.get("name") or "artifact"),
         "type": _safe_string(artifact.get("type") or "unknown"),
         "path": _safe_string(artifact.get("path")),
     }
+    if "data" in artifact:
+        normalized["data"] = _limit_artifact_data(redact_bidi_value(artifact["data"]))
+    return normalized
 
 
 def _normalize_status(status: Any) -> str:
@@ -400,6 +408,19 @@ def _safe_string(value: Any) -> str:
             text,
         )
     return text[:MAX_FIELD_LENGTH]
+
+
+def _limit_artifact_data(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key)[:MAX_FIELD_LENGTH]: _limit_artifact_data(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _limit_artifact_data(item) for item in value[:MAX_ARTIFACT_DATA_LIST_ITEMS]
+        ]
+    return _safe_string(value)
 
 
 def _redact_url(value: Any) -> str:

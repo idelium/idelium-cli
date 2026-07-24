@@ -48,3 +48,38 @@ back to classic WebDriver.
 The negotiation layer does not capture console or network data by itself. Later
 BiDi adapters must use explicit allow-lists, size limits, redaction, and tenant
 isolation before storing any artifact.
+
+## Console event artifacts
+
+Idelium normalizes selected browser console/log events into bounded execution
+artifacts with type `application/vnd.idelium.bidi.console+json`.
+
+Supported event types:
+
+- `log.entryAdded`
+- `runtime.consoleAPICalled`
+- `cdp.Runtime.consoleAPICalled`
+
+Supported levels are `debug`, `info`, `log`, `warning`, `error`, and `trace`.
+The legacy `warn` level is normalized to `warning`; unknown levels are stored as
+`log`.
+
+Each normalized event contains:
+
+| Field | Meaning |
+| --- | --- |
+| `type` | Original BiDi/CDP event type. |
+| `level` | Normalized console level. |
+| `text` | Redacted message text, limited to 2,000 characters. |
+| `timestamp` | Optional event timestamp when provided by the browser. |
+| `source` | Optional realm or browsing context identifier. |
+| `url` | Optional redacted source URL. Sensitive query values are replaced. |
+| `lineNumber` | Optional source line number. |
+| `columnNumber` | Optional source column number. |
+
+Console artifacts are limited to 100 events by default. If more events are
+captured, the artifact sets `truncated=true` and records `totalEvents`.
+
+Before storage, Idelium redacts common credential keys and configured sensitive
+values, including authorization headers, cookies, passwords, secrets, sessions,
+tokens, and API keys. BiDi endpoint URLs are never persisted.

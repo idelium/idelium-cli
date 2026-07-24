@@ -9,7 +9,9 @@ from idelium._internal.bidi import (
     BIDI_LIFECYCLE_OPEN,
     BidiLifecycleError,
     BidiSessionLifecycle,
+    build_bidi_console_artifact,
     negotiate_bidi_capabilities,
+    normalize_bidi_console_event,
     normalize_bidi_mode,
 )
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
@@ -166,6 +168,78 @@ class BidiNegotiationTest(unittest.TestCase):
 
         self.assertEqual(BIDI_LIFECYCLE_CLOSED, config["bidiLifecycle"]["state"])
         self.assertNotIn("_bidiSession", config)
+
+    def test_console_event_normalization_redacts_sensitive_values(self):
+        normalized = normalize_bidi_console_event(
+            {
+                "type": "log.entryAdded",
+                "params": {
+                    "level": "warn",
+                    "text": "token=abc123 customer-secret",
+                    "timestamp": 123,
+                    "source": {
+                        "url": "https://example.test/path?token=abc123&query=ok",
+                        "lineNumber": 12,
+                        "columnNumber": 3,
+                    },
+                },
+            },
+            sensitive_values=["customer-secret"],
+        )
+
+        self.assertEqual("warning", normalized["level"])
+        self.assertEqual("token=[REDACTED] [REDACTED]", normalized["text"])
+        self.assertEqual(
+            "https://example.test/path?token=%5BREDACTED%5D&query=ok",
+            normalized["url"],
+        )
+        self.assertEqual(12, normalized["lineNumber"])
+
+    def test_unsupported_console_event_is_ignored(self):
+        self.assertIsNone(
+            normalize_bidi_console_event({"type": "network.beforeRequestSent"})
+        )
+
+    def test_console_artifact_is_bounded(self):
+        events = [
+            normalize_bidi_console_event(
+                {
+                    "type": "log.entryAdded",
+                    "params": {"level": "info", "text": str(index)},
+                }
+            )
+            for index in range(3)
+        ]
+
+        artifact = build_bidi_console_artifact(events, limit=2)
+
+        self.assertEqual("bidi-console-events", artifact["name"])
+        self.assertTrue(artifact["data"]["truncated"])
+        self.assertEqual(3, artifact["data"]["totalEvents"])
+        self.assertEqual(2, len(artifact["data"]["events"]))
+
+    def test_lifecycle_console_artifact_is_added_on_close(self):
+        config = {
+            "bidiNegotiation": {"state": "supported", "mode": "auto"},
+        }
+        driver = Mock()
+        driver.capabilities = {"webSocketUrl": "ws://grid/session/secret"}
+        lifecycle = IdeliumSelenium._start_bidi_session(driver, config)
+        lifecycle.record_console_event(
+            {
+                "type": "log.entryAdded",
+                "params": {"level": "error", "text": "password=hunter2"},
+            }
+        )
+
+        IdeliumSelenium.close_bidi_session(config)
+
+        artifact = config["bidiArtifacts"][0]
+        self.assertEqual("application/vnd.idelium.bidi.console+json", artifact["type"])
+        self.assertEqual(
+            "password=[REDACTED]",
+            artifact["data"]["events"][0]["text"],
+        )
 
 
 if __name__ == "__main__":
