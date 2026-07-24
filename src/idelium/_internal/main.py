@@ -16,6 +16,7 @@ from idelium._internal.ideliumclib import InitIdelium
 from idelium._internal.thirdparties.ideliumzephyr import ZephyrConnection
 from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.connection import HttpTransportError
+from idelium._internal.astexport import export_ast_report
 from idelium._internal.exitcodes import (
     EXIT_CONNECTIVITY_ERROR,
     EXIT_INTERNAL_ERROR,
@@ -80,6 +81,9 @@ def main(args: Optional[List[str]] = None) -> int:
     try:
         define_parameters = idelium_cl_lib.define_parameters(args, ideliumws, printer)
         cl_params = define_parameters["cl_params"]
+        if cl_params.get("dslSource") or cl_params.get("astReport"):
+            export_ast_report(cl_params["dslSource"], cl_params["astReport"], printer)
+            return EXIT_SUCCESS
         if cl_params["ideliumServer"] is False:
             return start_test(cl_params)
         else:

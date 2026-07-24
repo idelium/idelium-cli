@@ -52,6 +52,8 @@ class InitIdelium:
     --jsonReport            write a canonical JSON execution report to this path
     --htmlReport            write a self-contained HTML execution report to this path
     --junitReport           write a JUnit XML execution report to this path
+    --dslSource             parse this Idelium DSL source file for offline AST export
+    --astReport             write a canonical DSL AST JSON document to this path
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -130,6 +132,8 @@ class InitIdelium:
             "jsonReport": None,
             "htmlReport": None,
             "junitReport": None,
+            "dslSource": None,
+            "astReport": None,
             "count": 0,
             "ideliumKey": None,
             "forcedownload": False,
@@ -202,6 +206,18 @@ class InitIdelium:
         count_req = 0
         for i in check_required:
             count_req = count_req + check_required[i]
+        ast_export_requested = cl_params["dslSource"] is not None or cl_params[
+            "astReport"
+        ] is not None
+        if ast_export_requested:
+            if cl_params["dslSource"] is None or cl_params["astReport"] is None:
+                print(self.get_syntax())
+                printer.danger("dslSource and astReport are required together")
+                sys.exit(1)
+            self.configure_http(cl_params, printer)
+            return {
+                "cl_params": cl_params,
+            }
         if cl_params["ideliumServer"] is False:
             if cl_params["ideliumKey"] is None:
                 file_idelium_key = str(Path.home()) + "/.idelium"

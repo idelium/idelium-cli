@@ -95,6 +95,24 @@ class CliArgumentParsingTest(unittest.TestCase):
         self.assertEqual("reports/result.html", defined["cl_params"]["htmlReport"])
         self.assertEqual("reports/result.xml", defined["cl_params"]["junitReport"])
 
+    def test_accepts_offline_ast_export_without_api_credentials(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--dslSource=tests/login.idelium",
+                "--astReport",
+                "reports/login.ast.json",
+            ],
+            Mock(),
+            printer,
+        )
+
+        self.assertEqual("tests/login.idelium", defined["cl_params"]["dslSource"])
+        self.assertEqual("reports/login.ast.json", defined["cl_params"]["astReport"])
+
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
         printer = Mock()

@@ -143,6 +143,8 @@ flag.
 | `--jsonReport=<path>` | Write a canonical local JSON execution report | disabled |
 | `--htmlReport=<path>` | Write a self-contained local HTML execution report | disabled |
 | `--junitReport=<path>` | Write a JUnit XML report for CI test consumers | disabled |
+| `--dslSource=<path>` | Parse this DSL source file for offline AST export | disabled |
+| `--astReport=<path>` | Write the canonical DSL AST JSON document | disabled |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
 
@@ -225,6 +227,21 @@ contract. JSON reports follow the schema published at
 https://github.com/idelium/idelium-cli/blob/main/docs/reports/execution-report.schema.json.
 HTML and JUnit reports escape untrusted content. Sensitive diagnostic fragments
 and sensitive URL query values are redacted before any format is written.
+
+## Offline DSL AST export
+
+Use `--dslSource=<path>` with `--astReport=<path>` to parse an Idelium DSL file
+without contacting the Idelium API and write the canonical AST JSON document:
+
+```bash
+idelium --dslSource=docs/dsl/v1/examples/minimal.idelium \
+  --astReport=reports/minimal.ast.json
+```
+
+The AST export is a separate contract from execution results. It uses
+`schemaVersion: "1.0"` and `languageVersion: "1.0"` and is intended for static
+validation, migration tooling, and review workflows. Unsupported future DSL
+versions fail before any output is written.
 
 ## Selenium execution
 
