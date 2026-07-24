@@ -3,6 +3,9 @@
 Idelium supports WebDriver BiDi as an optional browser-diagnostics capability.
 Classic WebDriver remains the default execution path.
 
+For browser compatibility, fallback behavior, privacy controls, and
+troubleshooting, see [browser-support.md](browser-support.md).
+
 ## Configuration
 
 Use `--bidiMode=<mode>` or the `bidiMode` environment field:

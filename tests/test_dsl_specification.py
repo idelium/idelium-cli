@@ -57,6 +57,8 @@ class DslSpecificationTest(unittest.TestCase):
             "https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md",
             readme,
         )
+        self.assertIn("docs/bidi/browser-support.md", readme)
+        self.assertTrue((REPOSITORY_ROOT / "docs/bidi/browser-support.md").exists())
 
     def test_grammar_defines_every_v1_statement(self):
         grammar = (DSL_V1_ROOT / "grammar.ebnf").read_text(encoding="utf-8")

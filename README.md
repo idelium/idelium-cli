@@ -305,7 +305,8 @@ WebDriver unchanged when BiDi is disabled:
 The CLI only requests the capability; browser, driver, and Grid versions still
 decide whether a BiDi endpoint is actually returned. See
 [docs/bidi/README.md](docs/bidi/README.md) for supported negotiation states,
-fallback behavior, and limitations.
+fallback behavior, and limitations. The detailed browser compatibility guide is
+available at [docs/bidi/browser-support.md](docs/bidi/browser-support.md).
 
 Explicit waits use Selenium expected conditions. Existing steps without a
 condition still wait for element presence. New steps may provide
