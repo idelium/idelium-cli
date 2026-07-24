@@ -55,6 +55,7 @@ class SeleniumGridTest(unittest.TestCase):
         self.assertEqual("linux", capabilities["platformName"])
         self.assertEqual("Idelium test", capabilities["se:name"])
         self.assertTrue(capabilities["webSocketUrl"])
+        self.assertEqual("supported", config["bidiNegotiation"]["state"])
         driver.set_window_size.assert_called_once_with(1280, 720)
         driver.get.assert_called_once_with("https://application.example.test")
 
@@ -115,6 +116,7 @@ class SeleniumGridTest(unittest.TestCase):
                 "--ideliumwsBaseurl=https://api.example.test",
                 "--seleniumGridUrl=https://cli-grid.test:4444",
                 '--seleniumGridCapabilities={"platformName":"linux"}',
+                "--bidiMode=auto",
             ],
             web_service,
             printer,
@@ -130,6 +132,40 @@ class SeleniumGridTest(unittest.TestCase):
         self.assertEqual(
             {"platformName": "linux"},
             loaded["cl_params"]["seleniumGridCapabilities"],
+        )
+        self.assertEqual("auto", loaded["cl_params"]["bidiMode"])
+
+    def test_invalid_bidi_mode_is_rejected(self):
+        loader = InitIdelium()
+        printer = Mock()
+        web_service = Mock()
+        web_service.get_configuration.return_value = {
+            "environments": {
+                "ci": {
+                    "browser": "chrome",
+                    "bidiMode": "always",
+                },
+            },
+            "configStep": {},
+        }
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject=1",
+                "--idCycle=2",
+                "--environment=ci",
+                "--ideliumKey=key==",
+                "--ideliumwsBaseurl=https://api.example.test",
+            ],
+            web_service,
+            printer,
+        )
+
+        with self.assertRaises(SystemExit):
+            loader.load_parameters(defined["cl_params"], web_service, printer)
+
+        printer.danger.assert_called_with(
+            "bidiMode must be one of: disabled, auto, required"
         )
 
 

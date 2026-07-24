@@ -1,4 +1,5 @@
 """System module."""
+
 from __future__ import absolute_import
 import time
 import sys
@@ -22,12 +23,16 @@ from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.commons.seleniumkeyevent import EventKey
 from idelium._internal.commons.seleniumby import SelBy
+from idelium._internal.bidi import negotiate_bidi_capabilities
 from idelium._internal.selector_diagnostics import collect_step_selector_diagnostics
 
 
 printer = InitPrinter()
+
+
 class IdeliumSelenium:
-    ''' IdeliumSelenium '''
+    """IdeliumSelenium"""
+
     SELENIUM_GENERIC_COMMANDS = {
         "accept_alert",
         "add_cookie",
@@ -67,11 +72,21 @@ class IdeliumSelenium:
     @staticmethod
     def _selenium_capabilities(config):
         """Return configured Selenium W3C capabilities."""
-        return (
+        capabilities = (
             config.get("seleniumGridCapabilities")
             or config.get("json_config", {}).get("seleniumGridCapabilities")
             or {}
         )
+        browser = config.get("browser") or config.get("json_config", {}).get("browser")
+        negotiation = negotiate_bidi_capabilities(
+            browser=browser,
+            mode=config.get("bidiMode", "disabled"),
+            capabilities=capabilities,
+        )
+        config["bidiNegotiation"] = negotiation.as_dict()
+        if negotiation.state == "failed":
+            raise ValueError(negotiation.message)
+        return negotiation.capabilities
 
     @staticmethod
     def _apply_selenium_capabilities(options, config):
@@ -85,7 +100,9 @@ class IdeliumSelenium:
         """Create a Selenium 4 local driver and fall back to a system driver."""
         try:
             if manager is not None and service_class is not None:
-                return factory(service=service_class(manager().install()), options=options)
+                return factory(
+                    service=service_class(manager().install()), options=options
+                )
             if options is not None:
                 return factory(options=options)
             return factory()
@@ -97,68 +114,77 @@ class IdeliumSelenium:
 
     @staticmethod
     def sleep(driver, config, object_step):
-        ''' Sleep '''
+        """Sleep"""
         time.sleep(object_step["seconds"])
-        return {'returnCode': Result.OK}
+        return {"returnCode": Result.OK}
 
-    def wait_and_click(self,driver, config, object_step):
-        ''' wait and click '''
+    def wait_and_click(self, driver, config, object_step):
+        """wait and click"""
         wait_result = self.wait_for_next_step(driver, config, object_step)
-        if wait_result['returnCode'] == Result.KO:
+        if wait_result["returnCode"] == Result.KO:
             return wait_result
         return self.click(driver, config, object_step)
 
     @staticmethod
     def find_element_by_xpath(driver, config, object_step):
-        ''' find element by xpath condition '''
+        """find element by xpath condition"""
         try:
             driver.find_element(SelBy().get_by("XPATH"), object_step["xpath"])
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def find_elements_by_xpath(driver, config, object_step):
-        '''find elements by xpath condition'''
+        """find elements by xpath condition"""
         try:
-            elements = driver.find_elements(SelBy().get_by("XPATH"), object_step["xpath"])
-            return {'returnCode': Result.OK if len(elements) > 0 else Result.KO}
+            elements = driver.find_elements(
+                SelBy().get_by("XPATH"), object_step["xpath"]
+            )
+            return {"returnCode": Result.OK if len(elements) > 0 else Result.KO}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def find_element(driver, config, object_step):
-        ''' find element'''
+        """find element"""
         try:
-            driver.find_element(SelBy().get_by(object_step["findBy"]), object_step["target"])
-            return {'returnCode': Result.OK}
+            driver.find_element(
+                SelBy().get_by(object_step["findBy"]), object_step["target"]
+            )
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def find_elements(driver, config, object_step):
-        ''' find elements'''
+        """find elements"""
         try:
             elements = driver.find_elements(
                 SelBy().get_by(object_step["findBy"]),
                 object_step["target"],
             )
-            return {'returnCode': Result.OK if len(elements) > 0 else Result.KO}
+            return {"returnCode": Result.OK if len(elements) > 0 else Result.KO}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def page_source(driver, config, object_step):
-        ''' page source for debug is useful '''
+        """page source for debug is useful"""
         print(driver.page_source)
-        return {'returnCode': Result.OK, 'value': driver.page_source}
+        return {"returnCode": Result.OK, "value": driver.page_source}
+
     @staticmethod
     def switch_to_frame(driver, config, object_step):
-        ''' switch_to_frame '''
+        """switch_to_frame"""
         try:
             by = SelBy()
             if "xpath" in object_step:
@@ -169,23 +195,26 @@ class IdeliumSelenium:
                     object_step["target"],
                 )
             driver.switch_to.frame(frame)
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def switch_to_default_content(driver, config, object_step):
-        ''' switch_to_default_content '''
+        """switch_to_default_content"""
         driver.switch_to.default_content()
-        return {'returnCode': Result.OK}
+        return {"returnCode": Result.OK}
+
     @staticmethod
     def find_object_element(driver, config, object_step):
-        ''' find_object_element '''
+        """find_object_element"""
         return IdeliumSelenium.find_element_by_xpath(driver, config, object_step)
+
     @staticmethod
     def click_object(driver, config, object_step):
-        ''' click_object '''
+        """click_object"""
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
@@ -199,35 +228,35 @@ class IdeliumSelenium:
                 )
             element.click()
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     @staticmethod
     def drag_and_drop(driver, config, object_step):
-        ''' drag_and_drop '''    
+        """drag_and_drop"""
         try:
-            drag_element = driver.find_element_by_xpath(
-                object_step["xpathDrag"])
-            drop_element = driver.find_element_by_xpath(
-                object_step["xpathDrop"])
+            drag_element = driver.find_element_by_xpath(object_step["xpathDrag"])
+            drop_element = driver.find_element_by_xpath(object_step["xpathDrop"])
             action = ActionChains(driver)
             action.drag_and_drop(drag_element, drop_element).perform()
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
+
     def open_browser(self, driver, config, object_step):
-        ''' open browser '''  
+        """open browser"""
         driver = None
         return_code = Result.OK
-        ''' only for server mode '''
-        if 'browser' in config:
-           config["json_config"]["browser"] = config["browser"]
+        """ only for server mode """
+        if "browser" in config:
+            config["json_config"]["browser"] = config["browser"]
         if config.get("seleniumGridUrl"):
             try:
                 driver = self.create_remote_driver(config)
@@ -241,12 +270,12 @@ class IdeliumSelenium:
             if config["device"] is not None:
                 mobile_emulation = {"deviceName": config["device"]}
                 chrome_options = webdriver.ChromeOptions()
-                chrome_options.add_experimental_option("mobileEmulation",
-                                                       mobile_emulation)
+                chrome_options.add_experimental_option(
+                    "mobileEmulation", mobile_emulation
+                )
             else:
                 if config["useragent"] is not None:
-                    chrome_options.add_argument("user-agent=" +
-                                                config["useragent"])
+                    chrome_options.add_argument("user-agent=" + config["useragent"])
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
                     chrome_options.add_argument("ignore-certificate-errors")
@@ -262,16 +291,18 @@ class IdeliumSelenium:
             except BaseException as err:
                 printer.danger("webdriver error")
                 print(
-                    "probably you need to download manually the webdriver\nfrom https://googlechromelabs.github.io/chrome-for-testing")
-                if config['ideliumServer'] is False:
+                    "probably you need to download manually the webdriver\nfrom https://googlechromelabs.github.io/chrome-for-testing"
+                )
+                if config["ideliumServer"] is False:
                     return_code = Result.KO
                     sys.exit(1)
                 return_code = Result.KO
         elif config["json_config"]["browser"] == "firefox":
             firefox_options = webdriver.FirefoxOptions()
             if config["useragent"] is not None:
-                firefox_options.set_preference("general.useragent.override",
-                                               config["useragent"])
+                firefox_options.set_preference(
+                    "general.useragent.override", config["useragent"]
+                )
             if "accept_self_certificate" in config["json_config"]:
                 if config["json_config"]["accept_self_certificate"] is True:
                     firefox_options.accept_insecure_certs = True
@@ -285,7 +316,7 @@ class IdeliumSelenium:
                 )
             except BaseException as err:
                 printer.danger("webdriver error")
-                if config['ideliumServer'] is False:
+                if config["ideliumServer"] is False:
                     return_code = Result.KO
                     sys.exit(1)
                 return_code = Result.KO
@@ -296,18 +327,20 @@ class IdeliumSelenium:
                 printer.danger("webriver error")
                 print(err)
                 return_code = Result.KO
-                if config['ideliumServer'] is False:
+                if config["ideliumServer"] is False:
                     sys.exit(1)
         elif config["json_config"]["browser"] == "opera":
             try:
                 webdriver_service = ChromeService(OperaDriverManager().install())
                 webdriver_service.start()
-                driver = webdriver.Remote(webdriver_service.service_url, webdriver.DesiredCapabilities.OPERA)
+                driver = webdriver.Remote(
+                    webdriver_service.service_url, webdriver.DesiredCapabilities.OPERA
+                )
             except BaseException as err:
                 printer.danger("webriver error")
                 print(err)
                 return_code = Result.KO
-                if config['ideliumServer'] is False:
+                if config["ideliumServer"] is False:
                     sys.exit(1)
         elif config["json_config"]["browser"] == "edge":
             edge_options = webdriver.EdgeOptions()
@@ -327,7 +360,7 @@ class IdeliumSelenium:
                 )
             except BaseException as err:
                 printer.danger("webdriver error")
-                if config['ideliumServer'] is False:
+                if config["ideliumServer"] is False:
                     return_code = Result.KO
                     sys.exit(1)
                 return_code = Result.KO
@@ -345,13 +378,13 @@ class IdeliumSelenium:
                 )
             except BaseException as err:
                 printer.danger("webdriver error")
-                if config['ideliumServer'] is False:
+                if config["ideliumServer"] is False:
                     return_code = Result.KO
                     sys.exit(1)
                 return_code = Result.KO
         else:
             printer.danger("driver not selected")
-            if config['ideliumServer'] is False:
+            if config["ideliumServer"] is False:
                 sys.exit(1)
         if return_code == Result.OK:
             driver.set_window_size(config["width"], config["height"])
@@ -361,14 +394,16 @@ class IdeliumSelenium:
                 driver.get(config["json_config"]["url"])
             return_code = Result.OK
             object_step["xpath"] = config["json_config"]["xpath_check_url"]
-            if object_step['xpath'] == '':
-                object_step['xpath'] = '/html'
-            if (self.wait_for_next_step(driver, config,
-                                        object_step)['returnCode'] == Result.KO):
+            if object_step["xpath"] == "":
+                object_step["xpath"] = "/html"
+            if (
+                self.wait_for_next_step(driver, config, object_step)["returnCode"]
+                == Result.KO
+            ):
                 return_code = Result.KO
                 config["json_step"]["attachScreenshot"] = True
                 config["json_step"]["failedExit"] = True
-        return {"driver": driver, 'returnCode': return_code, "config": config}
+        return {"driver": driver, "returnCode": return_code, "config": config}
 
     @staticmethod
     def create_remote_driver(config):
@@ -411,34 +446,41 @@ class IdeliumSelenium:
         IdeliumSelenium._apply_selenium_capabilities(options, config)
 
         return webdriver.Remote(command_executor=grid_url, options=options)
+
     @staticmethod
     def write_localstorage(driver, config, object_step):
-        ''' write_localstorage '''
-        
+        """write_localstorage"""
+
         try:
             print(object_step["note"], end="->", flush=True)
             script_js = ""
             for object_data in object_step["dataLocalStorage"]:
                 for key in object_data:
-                    script_js = (script_js+ 'localStorage.setItem("' + key +
-                                "\", '" + object_data[key] + "')\n")
+                    script_js = (
+                        script_js
+                        + 'localStorage.setItem("'
+                        + key
+                        + "\", '"
+                        + object_data[key]
+                        + "')\n"
+                    )
             script_js = (
-                script_js +
-                "return Array.apply(0, new Array(localStorage.length)).map(function (o, i)" +
-                "{ return localStorage.getItem(localStorage.key(i)); })"
+                script_js
+                + "return Array.apply(0, new Array(localStorage.length)).map(function (o, i)"
+                + "{ return localStorage.getItem(localStorage.key(i)); })"
             )
             driver.execute_script(script_js)
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
 
-    def screen_shot(self, driver, file_name,is_server):
-        """ screenshot """
-        
+    def screen_shot(self, driver, file_name, is_server):
+        """screenshot"""
+
         try:
             driver.get_screenshot_as_file(file_name)
             return Result.OK
@@ -449,40 +491,43 @@ class IdeliumSelenium:
                 sys.exit(1)
 
     def click(self, driver, config, object_step):
-        '''click '''
-        
+        """click"""
+
         by = SelBy()
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            #for retrocompat
+            # for retrocompat
             if "xpath" in object_step:
                 object_step["findBy"] = "XPATH"
                 object_step["target"] = object_step["xpath"]
-            driver.find_element(by.get_by(object_step["findBy"]),
-                                object_step["target"]).click()
+            driver.find_element(
+                by.get_by(object_step["findBy"]), object_step["target"]
+            ).click()
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
 
     def select(self, driver, config, object_step):
-        ''' select '''
-        
+        """select"""
+
         by = SelBy()
         print(object_step)
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            #for retrocompat
+            # for retrocompat
             if "xpath" in object_step:
                 object_step["findBy"] = "XPATH"
                 object_step["target"] = object_step["xpath"]
             select = Select(
-                driver.find_element(by.get_by(object_step["findBy"]),
-                                    object_step["target"]))
+                driver.find_element(
+                    by.get_by(object_step["findBy"]), object_step["target"]
+                )
+            )
             if "selectType" in object_step:
                 if object_step["selectType"] == "label":
                     select.select_by_visible_text(object_step["value"])
@@ -491,20 +536,23 @@ class IdeliumSelenium:
                 elif object_step["selectType"] == "index":
                     select.select_by_index(object_step["value"])
                 else:
-                    printer.danger("selectType:" + object_step["selectType"] +
-                                   " not supported in this moment")
+                    printer.danger(
+                        "selectType:"
+                        + object_step["selectType"]
+                        + " not supported in this moment"
+                    )
             else:
                 select.select_by_visible_text(object_step["value"])
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             printer.danger(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
 
     def clear(self, driver, config, object_step):
-        ''' clear '''
-        
+        """clear"""
+
         by = SelBy()
         try:
             print(object_step["note"], end="->", flush=True)
@@ -512,18 +560,19 @@ class IdeliumSelenium:
             if "xpath" in object_step:
                 object_step["findBy"] = "XPATH"
                 object_step["target"] = object_step["xpath"]
-            driver.find_element(by.get_by(object_step["findBy"]),
-                                object_step["target"]).clear()
+            driver.find_element(
+                by.get_by(object_step["findBy"]), object_step["target"]
+            ).clear()
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
 
     def send_keys(self, driver, config, object_step):
-        ''' send keys '''
-        
+        """send keys"""
+
         selenium_key = EventKey()
         by = SelBy()
         try:
@@ -531,8 +580,7 @@ class IdeliumSelenium:
             key = selenium_key.get_key(string_to_input)
             if key is None:
                 if object_step["text"][:1] == "%":
-                    string_to_input = config["json_config"][object_step["text"]
-                                                            [1:]]
+                    string_to_input = config["json_config"][object_step["text"][1:]]
             else:
                 string_to_input = key
             print(object_step["note"], end="->", flush=True)
@@ -541,49 +589,49 @@ class IdeliumSelenium:
                 object_step["findBy"] = "XPATH"
                 object_step["target"] = object_step["xpath"]
             driver.find_element(
-                by.get_by(object_step["findBy"]),
-                object_step["target"]).send_keys(string_to_input)
+                by.get_by(object_step["findBy"]), object_step["target"]
+            ).send_keys(string_to_input)
             printer.success("ok")
-            return {'returnCode': Result.OK}
+            return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {'returnCode': Result.KO}
+            return {"returnCode": Result.KO}
 
     def wait_for_next_step(self, driver, config, object_step):
-        ''' wait for next step'''
+        """wait for next step"""
         by = SelBy()
         if "xpath" in object_step:
             object_step["findBy"] = "XPATH"
             object_step["target"] = object_step["xpath"]
         wait_seconds = object_step.get("waitSeconds", object_step.get("timeout", 20))
         wait_condition = object_step.get("waitCondition", "presence")
-        if (self.wait_for_next_step_real(
+        if (
+            self.wait_for_next_step_real(
                 driver,
                 by.get_by(object_step["findBy"]),
                 object_step["target"],
                 object_step["note"],
                 wait_seconds,
                 wait_condition,
-        ) == Result.KO):
-            return {'returnCode': Result.KO}
-        return {'returnCode': Result.OK}
+            )
+            == Result.KO
+        ):
+            return {"returnCode": Result.KO}
+        return {"returnCode": Result.OK}
 
-    def wait_for_next_step_real(self,
-                                driver,
-                                by,
-                                target,
-                                note,
-                                wait_seconds=20,
-                                wait_condition="presence"):
-        '''wait for next step'''
+    def wait_for_next_step_real(
+        self, driver, by, target, note, wait_seconds=20, wait_condition="presence"
+    ):
+        """wait for next step"""
         failed = False
-        
+
         try:
             print(note, end="->", flush=True)
             WebDriverWait(driver, wait_seconds).until(
-                self._expected_condition(driver, by, target, wait_condition))
+                self._expected_condition(driver, by, target, wait_condition)
+            )
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
@@ -700,7 +748,9 @@ class IdeliumSelenium:
             return None
         if operation == "shadow_find_element":
             host = self._element_for_generic_command(driver, object_step)
-            shadow_by = object_step.get("shadowFindBy", object_step.get("findBy", "css"))
+            shadow_by = object_step.get(
+                "shadowFindBy", object_step.get("findBy", "css")
+            )
             shadow_target = object_step["shadowTarget"]
             host.shadow_root.find_element(SelBy().get_by(shadow_by), shadow_target)
             return None
@@ -724,7 +774,10 @@ class IdeliumSelenium:
             for action in object_step.get("actions", []):
                 action_type = action.get("type")
                 if action_type not in self.SELENIUM_ACTIONS:
-                    return {"returnCode": Result.KO, "error": "Unsupported Selenium action"}
+                    return {
+                        "returnCode": Result.KO,
+                        "error": "Unsupported Selenium action",
+                    }
                 self._apply_selenium_action(driver, chain, action)
             chain.perform()
             return {"returnCode": Result.OK}
@@ -769,6 +822,7 @@ class IdeliumSelenium:
     def _element_for_action(driver, action, prefix=None):
         """Find an action target element from direct or prefixed locator fields."""
         by = SelBy()
+
         def field(name):
             if prefix is None:
                 return action.get(name)
@@ -780,8 +834,8 @@ class IdeliumSelenium:
         return driver.find_element(by.get_by(field("findBy")), field("target"))
 
     def command(self, command, driver, obj_config, object_step):
-        ''' command '''
-        
+        """command"""
+
         commands = {
             "wait_and_click": self.wait_and_click,
             "wait_for_next_step": self.wait_for_next_step,

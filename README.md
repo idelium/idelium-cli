@@ -140,6 +140,7 @@ flag.
 | `--reportingService=<service>` | Result destination: `idelium` or `zephyr` | `idelium` |
 | `--ideliumwsBaseurl=<url>` | Idelium service origin | configured default |
 | `--ideliumKey=<key>` | API key; prefer the protected key file | `~/.idelium` |
+| `--bidiMode=<mode>` | Optional WebDriver BiDi negotiation: `disabled`, `auto`, or `required` | `disabled` |
 | `--jsonReport=<path>` | Write a canonical local JSON execution report | disabled |
 | `--htmlReport=<path>` | Write a self-contained local HTML execution report | disabled |
 | `--markdownReport=<path>` | Write a Markdown report for review artifacts | disabled |
@@ -286,9 +287,10 @@ configuration rather than the capabilities object. If Grid session creation
 fails, the CLI does not fall back to a local browser; the infrastructure failure
 remains visible to automation.
 
-BiDi-capable sessions can request a WebDriver BiDi endpoint by adding the W3C
-`webSocketUrl` capability. The same capability object is applied to Selenium
-Grid sessions and supported local browser options:
+BiDi-capable sessions can request a WebDriver BiDi endpoint through
+`--bidiMode=auto` or `--bidiMode=required`. Idelium adds the W3C
+`webSocketUrl=true` capability for supported browsers and keeps classic
+WebDriver unchanged when BiDi is disabled:
 
 ```json
 {
@@ -301,7 +303,9 @@ Grid sessions and supported local browser options:
 ```
 
 The CLI only requests the capability; browser, driver, and Grid versions still
-decide whether a BiDi endpoint is actually returned.
+decide whether a BiDi endpoint is actually returned. See
+[docs/bidi/README.md](docs/bidi/README.md) for supported negotiation states,
+fallback behavior, and limitations.
 
 Explicit waits use Selenium expected conditions. Existing steps without a
 condition still wait for element presence. New steps may provide

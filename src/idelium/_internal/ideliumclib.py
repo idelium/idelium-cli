@@ -44,6 +44,7 @@ class InitIdelium:
     --ideliumwsBaseurl      idelium server url ex: https://localhost
     --seleniumGridUrl       Selenium Grid endpoint, for example http://grid:4444
     --seleniumGridCapabilities JSON object merged into remote browser capabilities
+    --bidiMode              WebDriver BiDi negotiation: disabled | auto | required
     --caBundle              path to a trusted CA bundle
     --insecure              disable TLS verification for development only
     --httpConnectTimeout    HTTP connection timeout in seconds (default 5)
@@ -125,6 +126,7 @@ class InitIdelium:
             "appiumDesiredCaps": None,
             "seleniumGridUrl": None,
             "seleniumGridCapabilities": None,
+            "bidiMode": "disabled",
             "caBundle": None,
             "insecure": False,
             "httpConnectTimeout": 5,
@@ -208,9 +210,9 @@ class InitIdelium:
         count_req = 0
         for i in check_required:
             count_req = count_req + check_required[i]
-        ast_export_requested = cl_params["dslSource"] is not None or cl_params[
-            "astReport"
-        ] is not None
+        ast_export_requested = (
+            cl_params["dslSource"] is not None or cl_params["astReport"] is not None
+        )
         if ast_export_requested:
             if cl_params["dslSource"] is None or cl_params["astReport"] is None:
                 print(self.get_syntax())
@@ -332,6 +334,12 @@ class InitIdelium:
             cl_params["seleniumGridCapabilities"], dict
         ):
             printer.danger("seleniumGridCapabilities must be a JSON object")
+            sys.exit(1)
+        if cl_params["bidiMode"] == "disabled" and "bidiMode" in json_config:
+            cl_params["bidiMode"] = json_config["bidiMode"]
+        cl_params["bidiMode"] = str(cl_params["bidiMode"]).strip().lower()
+        if cl_params["bidiMode"] not in {"disabled", "auto", "required"}:
+            printer.danger("bidiMode must be one of: disabled, auto, required")
             sys.exit(1)
         if cl_params["idProject"] is not None:
             json_config["projectId"] = cl_params["idProject"]

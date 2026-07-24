@@ -52,6 +52,7 @@ class DslSpecificationTest(unittest.TestCase):
             "recursive-include docs/dsl *.ebnf *.idelium *.json *.md",
             manifest,
         )
+        self.assertIn("recursive-include docs/bidi *.md", manifest)
         self.assertIn(
             "https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md",
             readme,
