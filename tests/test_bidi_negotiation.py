@@ -148,6 +148,20 @@ class BidiNegotiationTest(unittest.TestCase):
         resource.close.assert_called_once_with()
         self.assertEqual(BIDI_LIFECYCLE_CLOSED, lifecycle.as_dict()["state"])
 
+    def test_lifecycle_connection_loss_is_reported_as_cleanup_failure(self):
+        resource = Mock()
+        resource.close.side_effect = RuntimeError("socket closed")
+        driver = Mock()
+        driver.capabilities = {"webSocketUrl": "ws://grid/session/secret"}
+        lifecycle = BidiSessionLifecycle({"state": "supported", "mode": "auto"})
+        lifecycle.open(driver)
+        lifecycle.register_resource(resource)
+
+        with self.assertRaisesRegex(BidiLifecycleError, "cleanup failed"):
+            lifecycle.close()
+
+        self.assertEqual("failed", lifecycle.as_dict()["state"])
+
     def test_wrapper_records_bidi_lifecycle_metadata(self):
         config = {
             "bidiNegotiation": {"state": "supported", "mode": "auto"},
@@ -172,6 +186,23 @@ class BidiNegotiationTest(unittest.TestCase):
 
         self.assertEqual(BIDI_LIFECYCLE_CLOSED, config["bidiLifecycle"]["state"])
         self.assertNotIn("_bidiSession", config)
+
+    def test_wrapper_connection_loss_does_not_raise_to_test_assertions(self):
+        config = {
+            "bidiNegotiation": {"state": "supported", "mode": "auto"},
+        }
+        driver = Mock()
+        driver.capabilities = {"webSocketUrl": "ws://grid/session/secret"}
+        lifecycle = IdeliumSelenium._start_bidi_session(driver, config)
+        resource = Mock()
+        resource.close.side_effect = RuntimeError("connection lost")
+        lifecycle.register_resource(resource)
+        printer = Mock()
+
+        IdeliumSelenium.close_bidi_session(config, printer)
+
+        self.assertEqual("failed", config["bidiLifecycle"]["state"])
+        printer.danger.assert_called_once()
 
     def test_console_event_normalization_redacts_sensitive_values(self):
         normalized = normalize_bidi_console_event(

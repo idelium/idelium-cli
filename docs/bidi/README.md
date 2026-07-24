@@ -45,6 +45,21 @@ session creation. If the endpoint is missing, Idelium marks the step as failed
 with an explicit lifecycle diagnostic. In `auto` mode, the same condition falls
 back to classic WebDriver.
 
+## Classic WebDriver compatibility
+
+Classic WebDriver is the compatibility baseline:
+
+- `bidiMode=disabled` does not add `webSocketUrl` and preserves existing
+  Selenium capabilities unchanged.
+- `bidiMode=auto` requests BiDi only for supported browsers. Unsupported
+  browsers continue with classic WebDriver and receive an explicit
+  `unsupported` negotiation state.
+- `bidiMode=required` never silently falls back. Unsupported browsers or
+  sessions that do not return a BiDi endpoint fail with a distinct lifecycle
+  diagnostic before BiDi data is captured.
+- BiDi cleanup failures, such as connection loss while closing listeners, are
+  reported as lifecycle diagnostics and do not become test assertions.
+
 The negotiation layer does not capture console or network data by itself. Later
 BiDi adapters must use explicit allow-lists, size limits, redaction, and tenant
 isolation before storing any artifact.

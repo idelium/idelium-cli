@@ -77,6 +77,63 @@ class SeleniumGridTest(unittest.TestCase):
         driver.get.assert_not_called()
 
     @patch("idelium._internal.wrappers.ideliumselenium.webdriver.Remote")
+    def test_required_bidi_unsupported_browser_does_not_create_session(self, remote):
+        wrapper = IdeliumSelenium()
+        config = self.config()
+        config["json_config"]["browser"] = "safari"
+        config["browser"] = "safari"
+        config["bidiMode"] = "required"
+
+        result = wrapper.open_browser(None, config, {})
+
+        self.assertEqual(Result.KO, result["returnCode"])
+        self.assertEqual("failed", config["bidiNegotiation"]["state"])
+        remote.assert_not_called()
+
+    @patch("idelium._internal.wrappers.ideliumselenium.webdriver.Remote")
+    def test_auto_bidi_unsupported_browser_falls_back_to_classic_session(self, remote):
+        driver = Mock()
+        driver.capabilities = {}
+        remote.return_value = driver
+        wrapper = IdeliumSelenium()
+        wrapper.wait_for_next_step = Mock(return_value={"returnCode": Result.OK})
+        config = self.config()
+        config["json_config"]["browser"] = "safari"
+        config["browser"] = "safari"
+        config["bidiMode"] = "auto"
+        config["seleniumGridCapabilities"] = {"platformName": "macos"}
+
+        result = wrapper.open_browser(None, config, {})
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        self.assertEqual("unsupported", config["bidiNegotiation"]["state"])
+        self.assertEqual("inactive", config["bidiLifecycle"]["state"])
+        capabilities = remote.call_args.kwargs["options"].capabilities
+        self.assertEqual("safari", capabilities["browserName"])
+        self.assertNotIn("webSocketUrl", capabilities)
+        driver.get.assert_called_once_with("https://application.example.test")
+
+    @patch("idelium._internal.wrappers.ideliumselenium.webdriver.Remote")
+    def test_disabled_bidi_keeps_classic_grid_capabilities_unchanged(self, remote):
+        driver = Mock()
+        driver.capabilities = {}
+        remote.return_value = driver
+        wrapper = IdeliumSelenium()
+        wrapper.wait_for_next_step = Mock(return_value={"returnCode": Result.OK})
+        config = self.config()
+        config["bidiMode"] = "disabled"
+        config["seleniumGridCapabilities"] = {"platformName": "linux"}
+
+        result = wrapper.open_browser(None, config, {})
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        self.assertEqual("disabled", config["bidiNegotiation"]["state"])
+        self.assertEqual("inactive", config["bidiLifecycle"]["state"])
+        capabilities = remote.call_args.kwargs["options"].capabilities
+        self.assertEqual("linux", capabilities["platformName"])
+        self.assertNotIn("webSocketUrl", capabilities)
+
+    @patch("idelium._internal.wrappers.ideliumselenium.webdriver.Remote")
     def test_invalid_grid_url_is_rejected_before_session_creation(self, remote):
         config = self.config()
         config["seleniumGridUrl"] = "file:///tmp/grid"
