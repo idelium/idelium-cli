@@ -79,7 +79,7 @@ test "Sign in" {
 
     def test_semicolon_separators_and_crlf_are_supported(self):
         source = (
-            'idelium 1.0\r\n'
+            "idelium 1.0\r\n"
             'test "Compact" { open "https://example.invalid"; '
             'wait css "main" present; screenshot "compact" }\r\n'
         )
@@ -90,7 +90,9 @@ test "Sign in" {
         self.assertEqual(3, len(ast["tests"][0]["statements"]))
 
     def test_invalid_source_reports_location_and_remediation(self):
-        source = 'idelium 1.0\n\ntest "Broken" {\n    Open "https://example.invalid"\n}\n'
+        source = (
+            'idelium 1.0\n\ntest "Broken" {\n    Open "https://example.invalid"\n}\n'
+        )
 
         with self.assertRaises(DslSyntaxError) as raised:
             parse_source(source)
@@ -102,7 +104,9 @@ test "Sign in" {
         self.assertIn("lowercase", diagnostic.remediation)
 
     def test_malformed_string_reports_a_syntax_diagnostic(self):
-        source = 'idelium 1.0\n\ntest "Broken" {\n    open "https://example.invalid\n}\n'
+        source = (
+            'idelium 1.0\n\ntest "Broken" {\n    open "https://example.invalid\n}\n'
+        )
 
         with self.assertRaises(DslSyntaxError) as raised:
             parse_source(source)
@@ -137,8 +141,7 @@ test "Sign in" {
         invalid_sources = {
             "empty selector": 'idelium 1.0\n\ntest "T" {\n    click css ""\n}\n',
             "zero timeout": (
-                'idelium 1.0\n\ntest "T" {\n'
-                '    wait css "main" visible timeout 0s\n}\n'
+                'idelium 1.0\n\ntest "T" {\n    wait css "main" visible timeout 0s\n}\n'
             ),
             "URL credentials": (
                 'idelium 1.0\n\ntest "T" {\n'

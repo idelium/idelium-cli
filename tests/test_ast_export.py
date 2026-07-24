@@ -56,7 +56,9 @@ class AstExportTest(unittest.TestCase):
 
             self.assertFalse(output_path.exists())
 
-        self.assertIn("Unsupported DSL language version", printer.danger.call_args.args[0])
+        self.assertIn(
+            "Unsupported DSL language version", printer.danger.call_args.args[0]
+        )
 
     def test_main_ast_export_mode_does_not_require_api_credentials(self):
         with tempfile.TemporaryDirectory() as directory:

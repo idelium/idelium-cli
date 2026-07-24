@@ -56,9 +56,14 @@ class SelectorDiagnosticsTest(unittest.TestCase):
         wrapper.command("find_element", driver, {}, step)
 
         driver.find_element.assert_called_once_with("css selector", "div:nth-child(2)")
-        warning_messages = [call.args[0] for call in patched_printer.warning.call_args_list]
+        warning_messages = [
+            call.args[0] for call in patched_printer.warning.call_args_list
+        ]
         self.assertTrue(
-            any("IDELIUM_SELECTOR_CSS_POSITIONAL" in message for message in warning_messages)
+            any(
+                "IDELIUM_SELECTOR_CSS_POSITIONAL" in message
+                for message in warning_messages
+            )
         )
 
     @patch("idelium._internal.wrappers.ideliumselenium.printer")
