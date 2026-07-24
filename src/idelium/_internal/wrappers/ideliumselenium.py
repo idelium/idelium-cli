@@ -22,6 +22,7 @@ from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.commons.seleniumkeyevent import EventKey
 from idelium._internal.commons.seleniumby import SelBy
+from idelium._internal.selector_diagnostics import collect_step_selector_diagnostics
 
 
 printer = InitPrinter()
@@ -806,6 +807,15 @@ class IdeliumSelenium:
             "selenium_actions": self.selenium_actions,
         }
         if command in commands.keys():
+            self._emit_selector_diagnostics(obj_config, object_step)
             return commands[command](driver, obj_config, object_step)
         printer.warning("Idelium Selenium | action nof found try as plugin:" + command)
         return None
+
+    @staticmethod
+    def _emit_selector_diagnostics(config, object_step):
+        """Emit non-blocking selector-quality diagnostics before execution."""
+        if config and config.get("selectorDiagnostics") is False:
+            return
+        for diagnostic in collect_step_selector_diagnostics(object_step):
+            printer.warning(diagnostic.format())
