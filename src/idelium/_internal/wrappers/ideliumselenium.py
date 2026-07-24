@@ -135,6 +135,11 @@ class IdeliumSelenium:
         )
         if network_artifact is not None:
             config.setdefault("bidiArtifacts", []).append(network_artifact)
+        diagnostic_artifact = lifecycle.diagnostic_artifact(
+            limit=int(config.get("bidiDiagnosticMaxEvents") or 100)
+        )
+        if diagnostic_artifact is not None:
+            config.setdefault("bidiArtifacts", []).append(diagnostic_artifact)
 
     @staticmethod
     def _local_driver(factory, manager, options=None, service_class=None):

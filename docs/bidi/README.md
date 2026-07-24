@@ -118,3 +118,53 @@ Network artifacts are limited to 100 events by default. Unsupported or
 unrecognized event payloads increment `droppedEvents`; excess events set
 `truncated=true`. Request and response bodies are never captured unless a future
 feature explicitly defines a redacted, size-limited body contract.
+
+## JavaScript and SPA navigation diagnostics
+
+Idelium normalizes JavaScript error and browser navigation signals into bounded
+trace artifacts with type `application/vnd.idelium.bidi.diagnostics+json`.
+These records are diagnostic-only: they preserve ordering and timing context but
+do not change the test outcome by themselves.
+
+Supported JavaScript error event types:
+
+- `script.exceptionThrown`
+- `runtime.exceptionThrown`
+- `cdp.Runtime.exceptionThrown`
+
+Supported navigation event types:
+
+- `browsingContext.navigationStarted`
+- `browsingContext.fragmentNavigated`
+- `browsingContext.domContentLoaded`
+- `browsingContext.load`
+
+Each JavaScript error trace contains:
+
+| Field | Meaning |
+| --- | --- |
+| `sequence` | Monotonic event order inside the execution step. |
+| `kind` | `javascript-error`. |
+| `type` | Original BiDi/CDP event type. |
+| `timestamp` | Optional browser timestamp. |
+| `message` | Redacted and bounded error message. |
+| `url` | Redacted source URL. |
+| `lineNumber` | Optional source line. |
+| `columnNumber` | Optional source column. |
+
+Each navigation trace contains:
+
+| Field | Meaning |
+| --- | --- |
+| `sequence` | Monotonic event order inside the execution step. |
+| `kind` | `navigation`. |
+| `type` | Original BiDi event type. |
+| `timestamp` | Optional browser timestamp. |
+| `context` | Browser browsing context identifier when provided. |
+| `navigation` | Browser navigation identifier when provided. |
+| `url` | Redacted navigation URL. |
+
+Diagnostic artifacts are limited to 100 events by default. Unsupported payloads
+increment `droppedEvents`; excess events set `truncated=true`. Messages and URLs
+are redacted before storage, escaped by every report renderer, and bounded by
+the same field-size policy used by local execution reports.

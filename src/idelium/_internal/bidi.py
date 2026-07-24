@@ -19,10 +19,12 @@ BIDI_LIFECYCLE_CLOSED = "closed"
 BIDI_LIFECYCLE_FAILED = "failed"
 BIDI_CONSOLE_ARTIFACT_TYPE = "application/vnd.idelium.bidi.console+json"
 BIDI_NETWORK_ARTIFACT_TYPE = "application/vnd.idelium.bidi.network+json"
+BIDI_DIAGNOSTICS_ARTIFACT_TYPE = "application/vnd.idelium.bidi.diagnostics+json"
 BIDI_CONSOLE_SCHEMA_VERSION = "1.0"
 BIDI_CONSOLE_MAX_EVENTS = 100
 BIDI_CONSOLE_MAX_MESSAGE_LENGTH = 2000
 BIDI_NETWORK_MAX_EVENTS = 100
+BIDI_DIAGNOSTIC_MAX_EVENTS = 100
 BIDI_CONSOLE_EVENT_TYPES = {
     "log.entryAdded",
     "runtime.consoleAPICalled",
@@ -33,6 +35,15 @@ BIDI_NETWORK_EVENT_TYPES = {
     "network.responseStarted",
     "network.responseCompleted",
     "network.fetchError",
+}
+BIDI_DIAGNOSTIC_EVENT_TYPES = {
+    "script.exceptionThrown",
+    "runtime.exceptionThrown",
+    "cdp.Runtime.exceptionThrown",
+    "browsingContext.navigationStarted",
+    "browsingContext.fragmentNavigated",
+    "browsingContext.domContentLoaded",
+    "browsingContext.load",
 }
 BIDI_CONSOLE_LEVELS = {"debug", "error", "info", "log", "trace", "warning", "warn"}
 BIDI_NETWORK_HEADER_ALLOW_LIST = {
@@ -91,7 +102,9 @@ class BidiSessionLifecycle:
         self._resources: list[Any] = []
         self._console_events: list[dict[str, Any]] = []
         self._network_events: list[dict[str, Any]] = []
+        self._diagnostic_events: list[dict[str, Any]] = []
         self._dropped_network_events = 0
+        self._dropped_diagnostic_events = 0
 
     @staticmethod
     def _negotiation_dict(
@@ -158,6 +171,33 @@ class BidiSessionLifecycle:
         return build_bidi_network_artifact(
             self._network_events,
             dropped_events=self._dropped_network_events,
+            limit=limit,
+        )
+
+    def record_diagnostic_event(
+        self,
+        event: dict[str, Any],
+        *,
+        sensitive_values: list[Any] | None = None,
+    ) -> None:
+        """Record redacted JavaScript error or navigation diagnostics."""
+
+        normalized = normalize_bidi_diagnostic_event(
+            event,
+            sequence=len(self._diagnostic_events) + self._dropped_diagnostic_events,
+            sensitive_values=sensitive_values,
+        )
+        if normalized is None:
+            self._dropped_diagnostic_events += 1
+            return
+        self._diagnostic_events.append(normalized)
+
+    def diagnostic_artifact(self, *, limit: int = BIDI_DIAGNOSTIC_MAX_EVENTS):
+        """Return a bounded JS/navigation diagnostic artifact when available."""
+
+        return build_bidi_diagnostic_artifact(
+            self._diagnostic_events,
+            dropped_events=self._dropped_diagnostic_events,
             limit=limit,
         )
 
@@ -382,6 +422,59 @@ def build_bidi_network_artifact(
     }
 
 
+def normalize_bidi_diagnostic_event(
+    event: dict[str, Any],
+    *,
+    sequence: int = 0,
+    sensitive_values: list[Any] | None = None,
+) -> dict[str, Any] | None:
+    """Normalize one JavaScript error or SPA navigation diagnostic event."""
+
+    event_type = _safe_text(event.get("type") or event.get("method"))
+    if event_type not in BIDI_DIAGNOSTIC_EVENT_TYPES:
+        return None
+    params = event.get("params") if isinstance(event.get("params"), dict) else event
+    if _is_exception_event(event_type):
+        return _normalize_exception_diagnostic(
+            event_type,
+            params,
+            sequence=sequence,
+            sensitive_values=sensitive_values,
+        )
+    return _normalize_navigation_diagnostic(
+        event_type,
+        params,
+        sequence=sequence,
+        sensitive_values=sensitive_values,
+    )
+
+
+def build_bidi_diagnostic_artifact(
+    events: list[dict[str, Any]],
+    *,
+    dropped_events: int = 0,
+    limit: int = BIDI_DIAGNOSTIC_MAX_EVENTS,
+) -> dict[str, Any] | None:
+    """Build a bounded JavaScript/navigation diagnostic artifact."""
+
+    bounded_limit = max(0, int(limit or 0))
+    if not events and dropped_events == 0:
+        return None
+    selected_events = events[:bounded_limit]
+    return {
+        "name": "bidi-diagnostics",
+        "type": BIDI_DIAGNOSTICS_ARTIFACT_TYPE,
+        "path": "",
+        "data": {
+            "schemaVersion": BIDI_CONSOLE_SCHEMA_VERSION,
+            "totalEvents": len(events),
+            "droppedEvents": max(0, int(dropped_events or 0)),
+            "truncated": len(events) > len(selected_events),
+            "events": selected_events,
+        },
+    }
+
+
 def negotiate_bidi_capabilities(
     *,
     browser: Any,
@@ -461,6 +554,70 @@ def _normalize_console_level(value: Any) -> str:
     if level == "warn":
         return "warning"
     return level if level in BIDI_CONSOLE_LEVELS else "log"
+
+
+def _normalize_exception_diagnostic(
+    event_type: str,
+    params: dict[str, Any],
+    *,
+    sequence: int,
+    sensitive_values: list[Any] | None,
+) -> dict[str, Any]:
+    exception = (
+        params.get("exceptionDetails")
+        if isinstance(params.get("exceptionDetails"), dict)
+        else params
+    )
+    source = (
+        exception.get("source") if isinstance(exception.get("source"), dict) else {}
+    )
+    return {
+        "sequence": max(0, int(sequence or 0)),
+        "kind": "javascript-error",
+        "type": event_type,
+        "timestamp": _safe_text(params.get("timestamp")),
+        "message": _safe_text(
+            redact_bidi_value(
+                exception.get("text")
+                or exception.get("message")
+                or params.get("message")
+                or "JavaScript error",
+                sensitive_values=sensitive_values,
+            )
+        ),
+        "url": _redact_url(
+            exception.get("url") or source.get("url") or params.get("url"),
+            sensitive_values,
+        ),
+        "lineNumber": _safe_int(
+            exception.get("lineNumber") or source.get("lineNumber")
+        ),
+        "columnNumber": _safe_int(
+            exception.get("columnNumber") or source.get("columnNumber")
+        ),
+    }
+
+
+def _normalize_navigation_diagnostic(
+    event_type: str,
+    params: dict[str, Any],
+    *,
+    sequence: int,
+    sensitive_values: list[Any] | None,
+) -> dict[str, Any]:
+    return {
+        "sequence": max(0, int(sequence or 0)),
+        "kind": "navigation",
+        "type": event_type,
+        "timestamp": _safe_text(params.get("timestamp")),
+        "context": _safe_text(params.get("context")),
+        "navigation": _safe_text(params.get("navigation")),
+        "url": _redact_url(params.get("url"), sensitive_values),
+    }
+
+
+def _is_exception_event(event_type: str) -> bool:
+    return "exception" in event_type
 
 
 def _redact_url(value: Any, sensitive_values: list[Any] | None = None) -> str:

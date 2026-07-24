@@ -10,9 +10,11 @@ from idelium._internal.bidi import (
     BidiLifecycleError,
     BidiSessionLifecycle,
     build_bidi_console_artifact,
+    build_bidi_diagnostic_artifact,
     build_bidi_network_artifact,
     negotiate_bidi_capabilities,
     normalize_bidi_console_event,
+    normalize_bidi_diagnostic_event,
     normalize_bidi_network_event,
     normalize_bidi_mode,
 )
@@ -313,6 +315,98 @@ class BidiNegotiationTest(unittest.TestCase):
 
         artifact_types = {artifact["type"] for artifact in config["bidiArtifacts"]}
         self.assertIn("application/vnd.idelium.bidi.network+json", artifact_types)
+
+    def test_javascript_error_diagnostic_is_redacted_and_bounded(self):
+        normalized = normalize_bidi_diagnostic_event(
+            {
+                "type": "script.exceptionThrown",
+                "params": {
+                    "timestamp": 123,
+                    "exceptionDetails": {
+                        "text": "Uncaught token=abc123 private-value",
+                        "url": "https://app.test/page?session=secret&view=1",
+                        "lineNumber": 10,
+                        "columnNumber": 5,
+                    },
+                },
+            },
+            sequence=7,
+            sensitive_values=["private-value"],
+        )
+
+        self.assertEqual(7, normalized["sequence"])
+        self.assertEqual("javascript-error", normalized["kind"])
+        self.assertEqual("Uncaught token=[REDACTED] [REDACTED]", normalized["message"])
+        self.assertEqual(
+            "https://app.test/page?session=%5BREDACTED%5D&view=1",
+            normalized["url"],
+        )
+        self.assertEqual(10, normalized["lineNumber"])
+
+    def test_navigation_diagnostic_preserves_ordering_fields(self):
+        normalized = normalize_bidi_diagnostic_event(
+            {
+                "type": "browsingContext.navigationStarted",
+                "params": {
+                    "timestamp": 456,
+                    "context": "context-1",
+                    "navigation": "navigation-2",
+                    "url": "https://app.test/home?token=abc",
+                },
+            },
+            sequence=2,
+        )
+
+        self.assertEqual(2, normalized["sequence"])
+        self.assertEqual("navigation", normalized["kind"])
+        self.assertEqual("context-1", normalized["context"])
+        self.assertEqual("navigation-2", normalized["navigation"])
+        self.assertIn("token=%5BREDACTED%5D", normalized["url"])
+
+    def test_diagnostic_artifact_tracks_truncated_and_dropped_events(self):
+        events = [
+            normalize_bidi_diagnostic_event(
+                {
+                    "type": "browsingContext.load",
+                    "params": {"url": f"https://app.test/{index}"},
+                },
+                sequence=index,
+            )
+            for index in range(3)
+        ]
+
+        artifact = build_bidi_diagnostic_artifact(events, dropped_events=1, limit=2)
+
+        self.assertEqual("bidi-diagnostics", artifact["name"])
+        self.assertEqual(3, artifact["data"]["totalEvents"])
+        self.assertEqual(1, artifact["data"]["droppedEvents"])
+        self.assertTrue(artifact["data"]["truncated"])
+        self.assertEqual(
+            [0, 1], [event["sequence"] for event in artifact["data"]["events"]]
+        )
+
+    def test_lifecycle_diagnostic_artifact_is_added_on_close(self):
+        config = {
+            "bidiNegotiation": {"state": "supported", "mode": "auto"},
+        }
+        driver = Mock()
+        driver.capabilities = {"webSocketUrl": "ws://grid/session/secret"}
+        lifecycle = IdeliumSelenium._start_bidi_session(driver, config)
+        lifecycle.record_diagnostic_event(
+            {
+                "type": "runtime.exceptionThrown",
+                "params": {"message": "password=hunter2"},
+            }
+        )
+
+        IdeliumSelenium.close_bidi_session(config)
+
+        artifacts = {artifact["type"]: artifact for artifact in config["bidiArtifacts"]}
+        diagnostic = artifacts["application/vnd.idelium.bidi.diagnostics+json"]
+        self.assertEqual(
+            "password=[REDACTED]",
+            diagnostic["data"]["events"][0]["message"],
+        )
 
 
 if __name__ == "__main__":
