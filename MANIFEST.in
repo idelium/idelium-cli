@@ -4,6 +4,7 @@ include NEWS.rst
 include README.md
 include pyproject.toml
 recursive-include docs/dsl *.ebnf *.idelium *.json *.md
+recursive-include docs/plugin-api *.md
 recursive-include scripts *.sh
 prune .github
 prune docs/build

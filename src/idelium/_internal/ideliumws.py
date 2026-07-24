@@ -8,6 +8,7 @@ import collections
 from pathlib import Path
 import base64
 from idelium._internal.commons.connection import Connection, HttpTransportError
+from idelium._internal.pluginapi import normalize_plugin_payload
 from PIL import Image
 
 
@@ -251,12 +252,14 @@ class IdeliumWs:
                 "GET", url, None, config["ideliumKey"], config["is_debug"]
             )
             # save  plugin for projectId
-            json_plugin_code = json.loads(json_plugin["code"])
-            array_plugins[json_plugin["name"]] = json_plugin["code"]
+            plugin_definition = normalize_plugin_payload(
+                json_plugin["name"], json_plugin["code"]
+            )
+            array_plugins[plugin_definition.name] = plugin_definition.as_config()
             plugins_dir = (
                 config["dir_idelium_scripts"] + "/" + config["idProject"] + "/plugin"
             )
-            py_file_path = plugins_dir + "/" + json_plugin["name"] + ".py"
+            py_file_path = plugins_dir + "/" + plugin_definition.name + ".py"
             if Path(plugins_dir).exists() is False:
                 os.makedirs(plugins_dir)
                 if config["is_debug"] is True:
@@ -264,7 +267,7 @@ class IdeliumWs:
             if config["is_debug"] is True:
                 print("plugin file saved in:", py_file_path)
             py_file = open(py_file_path, "wt")
-            py_file.write(json_plugin_code[0])
+            py_file.write(plugin_definition.source)
             py_file.close()
         # download environments
         json_environments = self.get_environments(config)
@@ -336,6 +339,7 @@ class IdeliumWs:
                     config["wrapper"] = wrapper
                     config["printer"] = printer
                     config["json_step"] = json_step
+                    config["plugins"] = test_configurations.get("plugins", {})
                     object_return = idelium.execute_step(driver, config)
                     status = object_return["status"]
                     driver = object_return["driver"]

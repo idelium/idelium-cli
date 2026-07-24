@@ -5,6 +5,11 @@ import sys
 import importlib.util
 import shutil
 from idelium._internal.commons.resultenum import Result
+from idelium._internal.pluginapi import (
+    PluginContractError,
+    PluginRegistry,
+    redact_plugin_error,
+)
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
 from idelium._internal.wrappers.ideliumappium import IdeliumAppium
 from idelium._internal.thirdparties.ideliumpostman import (
@@ -208,11 +213,28 @@ class StartManager:
             )
             if return_object_step is None:
                 try:
+                    registry = PluginRegistry.from_config(config.get("plugins", {}))
+                except PluginContractError as err:
+                    printer.danger("Invalid plugin metadata: " + redact_plugin_error(err))
+                    status = "2"
+                    step_failed = object_step
+                    continue
+                plugin_definition = registry.get_step_plugin(object_step["stepType"])
+                if plugin_definition is None:
+                    printer.danger(
+                        "Plugin step is not registered or does not declare the browser.step capability: "
+                        + object_step["stepType"]
+                    )
+                    status = "2"
+                    step_failed = object_step
+                    continue
+                try:
                     module = importlib.import_module(
                         "plugin." + object_step["stepType"], package=__package__
                     )
+                    entrypoint = getattr(module, plugin_definition.entrypoint)
                     params = object_step.get("params", None)
-                    plugin_response = module.init(driver, config["json_config"], params)
+                    plugin_response = entrypoint(driver, config["json_config"], params)
                     if plugin_response == Result.KO:
                         status = "2"
                         print(
@@ -231,17 +253,16 @@ class StartManager:
                         printer.warning("NA")
                 except Exception as err:
                     printer.danger("----------")
-                    print(err)
+                    printer.danger(redact_plugin_error(err))
                     printer.danger("----------")
                     printer.danger(
-                        "Warning stepType: "
+                        "Plugin step failed inside the isolated extension boundary: "
                         + object_step["stepType"]
-                        + " not exist or there is an error in your extra module"
                     )
                     if not config["ideliumServer"]:
                         sys.exit(1)
                     else:
-                        status = 2
+                        status = "2"
                 continue
 
             if "config" in return_object_step:
