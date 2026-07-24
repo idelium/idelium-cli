@@ -84,6 +84,8 @@ class CliArgumentParsingTest(unittest.TestCase):
                 "--jsonReport",
                 "reports/result.json",
                 "--htmlReport=reports/result.html",
+                "--markdownReport",
+                "reports/result.md",
                 "--junitReport",
                 "reports/result.xml",
             ],
@@ -93,6 +95,7 @@ class CliArgumentParsingTest(unittest.TestCase):
 
         self.assertEqual("reports/result.json", defined["cl_params"]["jsonReport"])
         self.assertEqual("reports/result.html", defined["cl_params"]["htmlReport"])
+        self.assertEqual("reports/result.md", defined["cl_params"]["markdownReport"])
         self.assertEqual("reports/result.xml", defined["cl_params"]["junitReport"])
 
     def test_accepts_offline_ast_export_without_api_credentials(self):

@@ -51,6 +51,7 @@ class InitIdelium:
     --postmanNewmanTimeout  Newman execution timeout in seconds (default 300)
     --jsonReport            write a canonical JSON execution report to this path
     --htmlReport            write a self-contained HTML execution report to this path
+    --markdownReport        write a Markdown execution report to this path
     --junitReport           write a JUnit XML execution report to this path
     --dslSource             parse this Idelium DSL source file for offline AST export
     --astReport             write a canonical DSL AST JSON document to this path
@@ -131,6 +132,7 @@ class InitIdelium:
             "postmanNewmanTimeout": 300,
             "jsonReport": None,
             "htmlReport": None,
+            "markdownReport": None,
             "junitReport": None,
             "dslSource": None,
             "astReport": None,

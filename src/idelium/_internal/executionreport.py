@@ -94,6 +94,74 @@ def write_junit_report(report: dict[str, Any], path: str | Path) -> None:
     report_path.write_text(render_junit_report(report), encoding="utf-8")
 
 
+def write_markdown_report(report: dict[str, Any], path: str | Path) -> None:
+    """Write a deterministic Markdown execution report."""
+
+    report_path = _prepare_output_path(path)
+    report_path.write_text(render_markdown_report(report), encoding="utf-8")
+
+
+def render_markdown_report(report: dict[str, Any]) -> str:
+    """Render the canonical report as escaped Markdown for review artifacts."""
+
+    run = report.get("run", {})
+    summary = report.get("summary", {})
+    lines = [
+        "# Idelium Execution Report",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        f"| Status | {_markdown_cell(run.get('status'))} |",
+        f"| Project | {_markdown_cell(run.get('projectId'))} |",
+        f"| Cycle | {_markdown_cell(run.get('cycleId'))} |",
+        f"| Environment | {_markdown_cell(run.get('environment'))} |",
+        f"| Generated at | {_markdown_cell(report.get('generatedAt'))} |",
+        "",
+        "## Summary",
+        "",
+        "| Tests | Steps | Passed | Failed | Skipped |",
+        "| ---: | ---: | ---: | ---: | ---: |",
+        "| {} | {} | {} | {} | {} |".format(
+            int(summary.get("tests", 0)),
+            int(summary.get("steps", 0)),
+            int(summary.get("passed", 0)),
+            int(summary.get("failed", 0)),
+            int(summary.get("skipped", 0)),
+        ),
+        "",
+        "## Steps",
+        "",
+        "| Test | Step | Status | Duration ms | Diagnostics | Artifacts |",
+        "| --- | --- | --- | ---: | --- | --- |",
+    ]
+    rows = 0
+    for test in report.get("tests", []):
+        for step in test.get("steps", []):
+            rows += 1
+            diagnostics = "<br>".join(
+                _markdown_cell(diagnostic.get("message", ""))
+                for diagnostic in step.get("diagnostics", [])
+            )
+            artifacts = "<br>".join(
+                _markdown_cell(artifact.get("path") or artifact.get("name", "artifact"))
+                for artifact in step.get("artifacts", [])
+            )
+            lines.append(
+                "| {} | {} | {} | {} | {} | {} |".format(
+                    _markdown_cell(test.get("name")),
+                    _markdown_cell(step.get("name")),
+                    _markdown_cell(step.get("status")),
+                    int(step.get("durationMilliseconds", 0)),
+                    diagnostics or "—",
+                    artifacts or "—",
+                )
+            )
+    if rows == 0:
+        lines.append("| — | — | skipped | 0 | No steps were recorded. | — |")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_junit_report(report: dict[str, Any]) -> str:
     """Render the canonical execution report as JUnit XML."""
 
@@ -372,6 +440,13 @@ def _step_diagnostics_text(step: dict[str, Any]) -> str:
         if diagnostic.get("message")
     ]
     return "\n".join(_safe_string(message) for message in diagnostics)
+
+
+def _markdown_cell(value: Any) -> str:
+    text = _safe_string(value)
+    text = text.replace("\\", "\\\\").replace("|", "\\|")
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
+    return text or "—"
 
 
 def _escape(value: Any) -> str:

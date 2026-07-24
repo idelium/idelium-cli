@@ -14,6 +14,7 @@ from idelium._internal.executionreport import (
     write_html_report,
     write_junit_report,
     write_json_report,
+    write_markdown_report,
 )
 from idelium._internal.exitcodes import (
     EXIT_DEPENDENCY_ERROR,
@@ -505,6 +506,7 @@ class IdeliumWs:
         if (
             not config.get("jsonReport")
             and not config.get("htmlReport")
+            and not config.get("markdownReport")
             and not config.get("junitReport")
         ):
             return
@@ -519,6 +521,11 @@ class IdeliumWs:
         if config.get("htmlReport"):
             write_html_report(report, config["htmlReport"])
             printer.success("HTML execution report written to " + config["htmlReport"])
+        if config.get("markdownReport"):
+            write_markdown_report(report, config["markdownReport"])
+            printer.success(
+                "Markdown execution report written to " + config["markdownReport"]
+            )
         if config.get("junitReport"):
             write_junit_report(report, config["junitReport"])
             printer.success(

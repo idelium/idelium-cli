@@ -12,8 +12,10 @@ from idelium._internal.executionreport import (
     build_execution_report,
     render_html_report,
     render_junit_report,
+    render_markdown_report,
     write_html_report,
     write_junit_report,
+    write_markdown_report,
     write_json_report,
 )
 
@@ -125,6 +127,24 @@ class ExecutionReportTest(unittest.TestCase):
         self.assertNotIn("abc", xml)
         self.assertNotIn("<script>", xml)
 
+    def test_markdown_report_contains_equivalent_summary_and_redacts_values(self):
+        report = build_execution_report(
+            self._sample_events(),
+            config={"idProject": "3", "idCycle": "2", "environment": "envpost"},
+            exit_code=1,
+        )
+
+        markdown = render_markdown_report(report)
+        html = render_html_report(report)
+
+        self.assertIn("| Status | failed |", markdown)
+        self.assertIn("| Tests | Steps | Passed | Failed | Skipped |", markdown)
+        self.assertIn("postman &lt;script&gt;", html)
+        self.assertIn("postman <script>", markdown)
+        self.assertNotIn("hunter2", markdown)
+        self.assertNotIn("abc", markdown)
+        self.assertIn("token [REDACTED]", markdown)
+
     def test_report_writers_create_parent_directories(self):
         report = build_execution_report(
             self._sample_events(),
@@ -135,14 +155,17 @@ class ExecutionReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             json_path = Path(directory) / "nested" / "report.json"
             html_path = Path(directory) / "nested" / "report.html"
+            markdown_path = Path(directory) / "nested" / "report.md"
             junit_path = Path(directory) / "nested" / "report.xml"
 
             write_json_report(report, json_path)
             write_html_report(report, html_path)
+            write_markdown_report(report, markdown_path)
             write_junit_report(report, junit_path)
 
             self.assertTrue(json_path.exists())
             self.assertTrue(html_path.exists())
+            self.assertTrue(markdown_path.exists())
             self.assertTrue(junit_path.exists())
 
 

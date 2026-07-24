@@ -324,6 +324,7 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             json_report = directory + "/report.json"
             html_report = directory + "/report.html"
+            markdown_report = directory + "/report.md"
             junit_report = directory + "/report.xml"
             config = {
                 "idCycle": "2",
@@ -335,6 +336,7 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
                 "printer": printer,
                 "jsonReport": json_report,
                 "htmlReport": html_report,
+                "markdownReport": markdown_report,
                 "junitReport": junit_report,
             }
             test_configurations = {
@@ -364,6 +366,7 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
 
             report = json.loads(Path(json_report).read_text(encoding="utf-8"))
             html_report_content = Path(html_report).read_text(encoding="utf-8")
+            markdown_report_content = Path(markdown_report).read_text(encoding="utf-8")
             junit_report_content = Path(junit_report).read_text(encoding="utf-8")
 
         self.assertEqual(EXIT_TEST_FAILURE, exit_code)
@@ -373,6 +376,7 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         self.assertNotIn("secret", serialized)
         self.assertNotIn("abc", serialized)
         self.assertIn("Idelium Execution Report", html_report_content)
+        self.assertIn("# Idelium Execution Report", markdown_report_content)
         self.assertIn("<testsuites", junit_report_content)
 
 
