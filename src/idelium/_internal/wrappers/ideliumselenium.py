@@ -23,7 +23,11 @@ from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.commons.seleniumkeyevent import EventKey
 from idelium._internal.commons.seleniumby import SelBy
-from idelium._internal.bidi import negotiate_bidi_capabilities
+from idelium._internal.bidi import (
+    BidiLifecycleError,
+    BidiSessionLifecycle,
+    negotiate_bidi_capabilities,
+)
 from idelium._internal.selector_diagnostics import collect_step_selector_diagnostics
 
 
@@ -94,6 +98,33 @@ class IdeliumSelenium:
         for key, value in IdeliumSelenium._selenium_capabilities(config).items():
             options.set_capability(key, value)
         return options
+
+    @staticmethod
+    def _start_bidi_session(driver, config):
+        """Start optional BiDi lifecycle tracking for a created WebDriver session."""
+        lifecycle = BidiSessionLifecycle(config.get("bidiNegotiation"))
+        try:
+            lifecycle.open(driver)
+        except BidiLifecycleError:
+            config["bidiLifecycle"] = lifecycle.as_dict()
+            raise
+        config["bidiLifecycle"] = lifecycle.as_dict()
+        config["_bidiSession"] = lifecycle
+        return lifecycle
+
+    @staticmethod
+    def close_bidi_session(config, printer_instance=None):
+        """Close optional BiDi resources without exposing session data."""
+        lifecycle = config.pop("_bidiSession", None)
+        if lifecycle is None:
+            return
+        try:
+            lifecycle.close()
+            config["bidiLifecycle"] = lifecycle.as_dict()
+        except BidiLifecycleError as err:
+            config["bidiLifecycle"] = lifecycle.as_dict()
+            active_printer = printer_instance or printer
+            active_printer.danger(str(err))
 
     @staticmethod
     def _local_driver(factory, manager, options=None, service_class=None):
@@ -387,19 +418,26 @@ class IdeliumSelenium:
             if config["ideliumServer"] is False:
                 sys.exit(1)
         if return_code == Result.OK:
-            driver.set_window_size(config["width"], config["height"])
-            if "url" in object_step:
-                driver.get(object_step["url"])
-            else:
-                driver.get(config["json_config"]["url"])
-            return_code = Result.OK
-            object_step["xpath"] = config["json_config"]["xpath_check_url"]
-            if object_step["xpath"] == "":
-                object_step["xpath"] = "/html"
-            if (
-                self.wait_for_next_step(driver, config, object_step)["returnCode"]
-                == Result.KO
-            ):
+            try:
+                self._start_bidi_session(driver, config)
+                driver.set_window_size(config["width"], config["height"])
+                if "url" in object_step:
+                    driver.get(object_step["url"])
+                else:
+                    driver.get(config["json_config"]["url"])
+                return_code = Result.OK
+                object_step["xpath"] = config["json_config"]["xpath_check_url"]
+                if object_step["xpath"] == "":
+                    object_step["xpath"] = "/html"
+                if (
+                    self.wait_for_next_step(driver, config, object_step)["returnCode"]
+                    == Result.KO
+                ):
+                    return_code = Result.KO
+                    config["json_step"]["attachScreenshot"] = True
+                    config["json_step"]["failedExit"] = True
+            except BidiLifecycleError as err:
+                printer.danger(str(err))
                 return_code = Result.KO
                 config["json_step"]["attachScreenshot"] = True
                 config["json_step"]["failedExit"] = True

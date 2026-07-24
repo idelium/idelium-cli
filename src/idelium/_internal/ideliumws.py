@@ -467,8 +467,14 @@ class IdeliumWs:
             report_events.append(report_test)
             if config["ideliumServer"] is True:
                 os.remove(config["dir_idelium_scripts"] + "server")
-            if driver != None:
-                driver.quit()
+            if driver is not None:
+                try:
+                    close_bidi_session = getattr(wrapper, "close_bidi_session", None)
+                    if close_bidi_session is not None:
+                        close_bidi_session(config, printer)
+                finally:
+                    driver.quit()
+                    driver = None
         self._write_execution_reports(report_events, config, exit_code, printer)
         return exit_code
 

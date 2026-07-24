@@ -379,6 +379,51 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         self.assertIn("# Idelium Execution Report", markdown_report_content)
         self.assertIn("<testsuites", junit_report_content)
 
+    def test_start_test_closes_bidi_lifecycle_before_quitting_driver(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        driver = Mock()
+        wrapper = Mock()
+        idelium = Mock()
+        idelium.get_wrapper.return_value = wrapper
+        idelium.execute_step.return_value = {
+            "status": "1",
+            "driver": driver,
+            "postman_data": [],
+            "type": "seleniumOrAppium",
+            "step_failed": "",
+        }
+        config = {
+            "idCycle": "2",
+            "idProject": "3",
+            "test": True,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "browser_17": {
+                    "name": "browser",
+                    "attachScreenshot": False,
+                    "failedExit": False,
+                }
+            }
+        }
+
+        with (
+            patch.object(web_service, "get_cycles") as get_cycles,
+            patch.object(web_service, "get_tests") as get_tests,
+        ):
+            get_cycles.return_value = [
+                {"id": 11, "name": "browser cycle", "description": "browser cycle"}
+            ]
+            get_tests.return_value = [{"id": 17, "name": "browser"}]
+
+            web_service.start_test(idelium, test_configurations, config)
+
+        wrapper.close_bidi_session.assert_called_once_with(config, printer)
+        driver.quit.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
