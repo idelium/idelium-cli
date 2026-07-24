@@ -49,6 +49,8 @@ class InitIdelium:
     --httpConnectTimeout    HTTP connection timeout in seconds (default 5)
     --httpReadTimeout       HTTP read timeout in seconds (default 30)
     --postmanNewmanTimeout  Newman execution timeout in seconds (default 300)
+    --jsonReport            write a canonical JSON execution report to this path
+    --htmlReport            write a self-contained HTML execution report to this path
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -124,6 +126,8 @@ class InitIdelium:
             "httpConnectTimeout": 5,
             "httpReadTimeout": 30,
             "postmanNewmanTimeout": 300,
+            "jsonReport": None,
+            "htmlReport": None,
             "count": 0,
             "ideliumKey": None,
             "forcedownload": False,

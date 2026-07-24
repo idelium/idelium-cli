@@ -5,9 +5,15 @@ import sys
 import os
 import json
 import collections
+import time
 from pathlib import Path
 import base64
 from idelium._internal.commons.connection import Connection, HttpTransportError
+from idelium._internal.executionreport import (
+    build_execution_report,
+    write_html_report,
+    write_json_report,
+)
 from idelium._internal.pluginapi import normalize_plugin_payload
 from PIL import Image
 
@@ -308,6 +314,7 @@ class IdeliumWs:
     def start_test(self, idelium, test_configurations, config):
         """start test"""
         exit_code = 0
+        report_events = []
         if config["ideliumServer"] is True:
             Path(config["dir_idelium_scripts"] + "server").touch()
         wrapper = idelium.get_wrapper(config)
@@ -330,6 +337,12 @@ class IdeliumWs:
                     cycle["name"],
                 )["idTest"]
             test_failed = False
+            report_test = {
+                "id": cycle["id"],
+                "name": cycle["name"],
+                "description": cycle["description"],
+                "steps": [],
+            }
             for test in object_test:
                 if test_failed is False:
                     json_step = test_configurations["steps"][
@@ -340,7 +353,9 @@ class IdeliumWs:
                     config["printer"] = printer
                     config["json_step"] = json_step
                     config["plugins"] = test_configurations.get("plugins", {})
+                    started_at = time.monotonic()
                     object_return = idelium.execute_step(driver, config)
+                    duration_ms = int((time.monotonic() - started_at) * 1000)
                     status = object_return["status"]
                     driver = object_return["driver"]
                     postman_data = object_return["postman_data"]
@@ -409,8 +424,84 @@ class IdeliumWs:
                     else:
                         if config["test"] is False:
                             self.update_test(config, id_test, 1, postman_data)
+                    report_test["steps"].append(
+                        self._report_step_event(
+                            test,
+                            json_step,
+                            status,
+                            duration_ms,
+                            typeofstep,
+                            postman_data,
+                            step_failed,
+                        )
+                    )
+                else:
+                    report_test["steps"].append(
+                        {
+                            "id": test["id"],
+                            "name": test["name"],
+                            "type": "skipped",
+                            "status": "5",
+                            "durationMilliseconds": 0,
+                            "diagnostics": [
+                                {
+                                    "level": "warning",
+                                    "message": "Step skipped because a previous required step failed.",
+                                }
+                            ],
+                            "artifacts": [],
+                            "postmanResults": [],
+                        }
+                    )
+            report_events.append(report_test)
             if config["ideliumServer"] is True:
                 os.remove(config["dir_idelium_scripts"] + "server")
             if driver != None:
                 driver.quit()
+        self._write_execution_reports(report_events, config, exit_code, printer)
         return exit_code
+
+    @staticmethod
+    def _report_step_event(
+        test,
+        json_step,
+        status,
+        duration_ms,
+        typeofstep,
+        postman_data,
+        step_failed,
+    ):
+        diagnostics = []
+        if status in ("2", "5") and step_failed:
+            diagnostics.append(
+                {
+                    "level": "error" if status == "2" else "warning",
+                    "message": "Step failed during execution.",
+                }
+            )
+        return {
+            "id": test["id"],
+            "name": json_step.get("name", test["name"]),
+            "type": typeofstep,
+            "status": status,
+            "durationMilliseconds": duration_ms,
+            "diagnostics": diagnostics,
+            "artifacts": [],
+            "postmanResults": postman_data or [],
+        }
+
+    @staticmethod
+    def _write_execution_reports(report_events, config, exit_code, printer):
+        if not config.get("jsonReport") and not config.get("htmlReport"):
+            return
+        report = build_execution_report(
+            report_events,
+            config=config,
+            exit_code=exit_code,
+        )
+        if config.get("jsonReport"):
+            write_json_report(report, config["jsonReport"])
+            printer.success("JSON execution report written to " + config["jsonReport"])
+        if config.get("htmlReport"):
+            write_html_report(report, config["htmlReport"])
+            printer.success("HTML execution report written to " + config["htmlReport"])

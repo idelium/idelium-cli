@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/idelium/idelium-cli/raw/main/docs/reports/execution-report.schema.json",
+  "title": "Idelium CLI Execution Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "run", "summary", "tests"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "generatedAt": {"type": "string"},
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "exitCode", "projectId", "cycleId", "environment", "reportingService"],
+      "properties": {
+        "status": {"enum": ["passed", "failed"]},
+        "exitCode": {"type": "integer"},
+        "projectId": {"type": "string"},
+        "cycleId": {"type": "string"},
+        "environment": {"type": "string"},
+        "reportingService": {"type": "string"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests", "steps", "passed", "failed", "skipped"],
+      "properties": {
+        "tests": {"type": "integer", "minimum": 0},
+        "steps": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/test"}
+    }
+  },
+  "$defs": {
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "steps"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}}
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "type", "status", "durationMilliseconds", "diagnostics", "artifacts", "postmanResults"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "type": {"type": "string"},
+        "status": {"enum": ["passed", "failed", "skipped"]},
+        "durationMilliseconds": {"type": "integer", "minimum": 0},
+        "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+        "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "postmanResults": {"type": "array", "items": {"$ref": "#/$defs/postmanResult"}}
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "message"],
+      "properties": {
+        "level": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "path"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"type": "string"},
+        "path": {"type": "string"}
+      }
+    },
+    "postmanResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "method", "url", "status", "passed", "timeMilliseconds", "assertions"],
+      "properties": {
+        "name": {"type": "string"},
+        "method": {"type": "string"},
+        "url": {"type": "string"},
+        "status": {"type": "string"},
+        "passed": {"type": "boolean"},
+        "timeMilliseconds": {"type": "integer", "minimum": 0},
+        "assertions": {"type": "array", "items": {"$ref": "#/$defs/diagnosticAssertion"}}
+      }
+    },
+    "diagnosticAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "passed", "message"],
+      "properties": {
+        "name": {"type": "string"},
+        "passed": {"type": "boolean"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}

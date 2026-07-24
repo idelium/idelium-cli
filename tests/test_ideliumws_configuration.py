@@ -1,4 +1,7 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from idelium._internal.commons.connection import HttpTransportError
@@ -216,6 +219,86 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         printer.danger.assert_called_with(
             "The test 'postman cycle' was interrupted because a required step failed"
         )
+
+    def test_local_execution_reports_are_written_from_canonical_result(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        postman_data = [
+            {
+                "name": "POST Raw Text",
+                "method": "POST",
+                "url": "https://example.invalid/post?token=secret",
+                "status": "500",
+                "passed": False,
+                "time": 10,
+                "assertions": [
+                    {
+                        "name": "status",
+                        "passed": False,
+                        "message": "token abc failed",
+                    }
+                ],
+            }
+        ]
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.return_value = {
+            "status": "2",
+            "driver": None,
+            "postman_data": postman_data,
+            "type": "postman",
+            "step_failed": {"stepType": "postman_collection"},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            json_report = directory + "/report.json"
+            html_report = directory + "/report.html"
+            config = {
+                "idCycle": "2",
+                "idProject": "3",
+                "environment": "envpost",
+                "reportingService": "idelium",
+                "test": True,
+                "ideliumServer": False,
+                "printer": printer,
+                "jsonReport": json_report,
+                "htmlReport": html_report,
+            }
+            test_configurations = {
+                "steps": {
+                    "postman_17": {
+                        "name": "postman",
+                        "attachScreenshot": False,
+                        "failedExit": False,
+                    }
+                }
+            }
+
+            with (
+                patch.object(web_service, "get_cycles") as get_cycles,
+                patch.object(web_service, "get_tests") as get_tests,
+            ):
+                get_cycles.return_value = [
+                    {
+                        "id": 11,
+                        "name": "postman cycle",
+                        "description": "postman cycle",
+                    }
+                ]
+                get_tests.return_value = [{"id": 17, "name": "postman"}]
+
+                exit_code = web_service.start_test(idelium, test_configurations, config)
+
+            report = json.loads(Path(json_report).read_text(encoding="utf-8"))
+            html_report_content = Path(html_report).read_text(encoding="utf-8")
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("failed", report["run"]["status"])
+        self.assertEqual(1, report["summary"]["failed"])
+        serialized = json.dumps(report)
+        self.assertNotIn("secret", serialized)
+        self.assertNotIn("abc", serialized)
+        self.assertIn("Idelium Execution Report", html_report_content)
 
 
 if __name__ == "__main__":

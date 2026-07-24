@@ -140,6 +140,8 @@ flag.
 | `--reportingService=<service>` | Result destination: `idelium` or `zephyr` | `idelium` |
 | `--ideliumwsBaseurl=<url>` | Idelium service origin | configured default |
 | `--ideliumKey=<key>` | API key; prefer the protected key file | `~/.idelium` |
+| `--jsonReport=<path>` | Write a canonical local JSON execution report | disabled |
+| `--htmlReport=<path>` | Write a self-contained local HTML execution report | disabled |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
 
@@ -201,6 +203,24 @@ duplicate execution records.
 Verbose diagnostics include the method, redacted URL, and response status. They
 must not include credentials, authorization headers, API keys, payloads, full
 response bodies, sensitive query parameters, or session identifiers.
+
+## Local execution reports
+
+Use `--jsonReport=<path>` to write a canonical machine-readable execution report
+and `--htmlReport=<path>` to write a self-contained human-readable report:
+
+```bash
+idelium --idCycle=2 --idProject=3 --environment=demo \
+  --ideliumwsBaseurl=https://localhost \
+  --jsonReport=reports/idelium-report.json \
+  --htmlReport=reports/idelium-report.html
+```
+
+Both files are generated from the same schema-versioned result contract. JSON
+reports follow the schema published at
+https://github.com/idelium/idelium-cli/blob/main/docs/reports/execution-report.schema.json.
+HTML reports escape untrusted content. Sensitive diagnostic fragments and
+sensitive URL query values are redacted before either format is written.
 
 ## Selenium execution
 

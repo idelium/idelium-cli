@@ -64,6 +64,34 @@ class CliArgumentParsingTest(unittest.TestCase):
 
         self.assertTrue(defined["cl_params"]["test"])
 
+    def test_accepts_local_report_output_paths(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject",
+                "1",
+                "--idCycle",
+                "2",
+                "--environment",
+                "demo",
+                "--ideliumKey",
+                "key==",
+                "--ideliumwsBaseurl",
+                "https://localhost",
+                "--jsonReport",
+                "reports/result.json",
+                "--htmlReport=reports/result.html",
+            ],
+            Mock(),
+            printer,
+        )
+
+        self.assertEqual("reports/result.json", defined["cl_params"]["jsonReport"])
+        self.assertEqual("reports/result.html", defined["cl_params"]["htmlReport"])
+
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
         printer = Mock()
