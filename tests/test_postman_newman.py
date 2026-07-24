@@ -740,6 +740,7 @@ class PostmanNewmanManagerTest(unittest.TestCase):
 
         self.assertEqual("2", result["status"])
         self.assertEqual("postman", result["type"])
+        self.assertTrue(result["dependency_failed"])
         self.assertFalse(result["postman_data"][0]["passed"])
         config["printer"].danger.assert_any_call(
             PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE

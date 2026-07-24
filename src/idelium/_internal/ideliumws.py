@@ -14,6 +14,11 @@ from idelium._internal.executionreport import (
     write_html_report,
     write_json_report,
 )
+from idelium._internal.exitcodes import (
+    EXIT_DEPENDENCY_ERROR,
+    EXIT_SUCCESS,
+    EXIT_TEST_FAILURE,
+)
 from idelium._internal.pluginapi import normalize_plugin_payload
 from PIL import Image
 
@@ -313,7 +318,7 @@ class IdeliumWs:
 
     def start_test(self, idelium, test_configurations, config):
         """start test"""
-        exit_code = 0
+        exit_code = EXIT_SUCCESS
         report_events = []
         if config["ideliumServer"] is True:
             Path(config["dir_idelium_scripts"] + "server").touch()
@@ -361,6 +366,7 @@ class IdeliumWs:
                     postman_data = object_return["postman_data"]
                     typeofstep = object_return["type"]
                     step_failed = object_return["step_failed"]
+                    dependency_failed = object_return.get("dependency_failed", False)
                     config["status"] = status
                     config["step_failed"] = step_failed
                     id_step = None
@@ -377,7 +383,10 @@ class IdeliumWs:
                             typeofstep,
                         )["idStep"]
                     if status in ("2", "5"):
-                        exit_code = 1
+                        if dependency_failed:
+                            exit_code = EXIT_DEPENDENCY_ERROR
+                        elif exit_code == EXIT_SUCCESS:
+                            exit_code = EXIT_TEST_FAILURE
                         if object_return["type"] == "seleniumOrAppium":
                             path = "screenshots/"
                             file_name = str(id_test) + ".png"

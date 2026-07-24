@@ -137,6 +137,7 @@ class StartManager:
         printer = config["printer"]
         typeOfStep = "seleniumOrAppium"
         postman_data = None
+        dependency_failed = False
         for object_step in config["json_step"]["steps"]:
             if status != "1":
                 printer.danger(object_step["stepType"] + ": skipped")
@@ -168,6 +169,7 @@ class StartManager:
                     )
                 if use_newman:
                     if not shutil.which("newman"):
+                        dependency_failed = True
                         printer.danger(NEWMAN_MISSING_MESSAGE)
                         postman_data = StartManager._postman_missing_newman_result()
                     else:
@@ -281,6 +283,7 @@ class StartManager:
             "step_failed": step_failed,
             "type": typeOfStep,
             "postman_data": postman_data,
+            "dependency_failed": dependency_failed,
         }
 
     def execute_single_step(self, test_configurations, config):

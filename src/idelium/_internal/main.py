@@ -16,6 +16,12 @@ from idelium._internal.ideliumclib import InitIdelium
 from idelium._internal.thirdparties.ideliumzephyr import ZephyrConnection
 from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.connection import HttpTransportError
+from idelium._internal.exitcodes import (
+    EXIT_CONNECTIVITY_ERROR,
+    EXIT_INTERNAL_ERROR,
+    EXIT_SUCCESS,
+    EXIT_VALIDATION_ERROR,
+)
 
 
 idelium = StartManager()
@@ -44,7 +50,7 @@ def start_test(cl_params):
     define_parameters = idelium_cl_lib.load_parameters(cl_params, ideliumws, printer)
     cl_params = define_parameters["cl_params"]
     test_config = define_parameters["test_config"]
-    exit_code = 0
+    exit_code = EXIT_SUCCESS
     if cl_params["reportingService"] == "idelium":
         exit_code = ideliumws.start_test(idelium, test_config, cl_params)
     elif cl_params["reportingService"] == "zephyr":
@@ -55,8 +61,8 @@ def start_test(cl_params):
             zephyr.go_execution(idelium, cl_params)
     else:
         printer.danger(f"Error: {cl_params['reportingService']} has a wrong value")
-        exit_code = 1
-    if exit_code == 0:
+        exit_code = EXIT_VALIDATION_ERROR
+    if exit_code == EXIT_SUCCESS:
         printer.success("Finish test")
     else:
         printer.danger("Finish test with failures")
@@ -70,15 +76,23 @@ def main(args: Optional[List[str]] = None) -> int:
     )
     if args is None:
         args = sys.argv
-    define_parameters = idelium_cl_lib.define_parameters(args, ideliumws, printer)
-    cl_params = define_parameters["cl_params"]
 
     try:
+        define_parameters = idelium_cl_lib.define_parameters(args, ideliumws, printer)
+        cl_params = define_parameters["cl_params"]
         if cl_params["ideliumServer"] is False:
             return start_test(cl_params)
         else:
             start_server(cl_params)
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else EXIT_VALIDATION_ERROR
+        if code == EXIT_SUCCESS:
+            return EXIT_SUCCESS
+        return EXIT_VALIDATION_ERROR
     except HttpTransportError as error:
         printer.danger(str(error))
-        return 2
-    return 0
+        return EXIT_CONNECTIVITY_ERROR
+    except Exception:
+        printer.danger("Unexpected internal CLI error.")
+        return EXIT_INTERNAL_ERROR
+    return EXIT_SUCCESS

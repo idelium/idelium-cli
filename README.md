@@ -567,11 +567,22 @@ PYPI_REPOSITORY_URL=https://test.pypi.org/legacy/ scripts/publish-package.sh
 
 ## Exit behavior and automation
 
-Treat any non-zero process exit as a failed CLI invocation. Preserve stdout and
-stderr only after checking that the output contains no credentials or customer
-data. Use finite job timeouts in CI, pin the installed package version, and make
-the selected project, cycle, environment, browser infrastructure, and reporting
-destination explicit in the job configuration.
+Treat any non-zero process exit as a failed CLI invocation. The CLI uses stable
+exit codes so automation can distinguish the failure class:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Execution completed successfully |
+| `1` | A test, step, assertion, or reporting operation failed |
+| `2` | CLI validation or usage failed before execution |
+| `3` | Idelium API or HTTP connectivity failed |
+| `4` | A required local runtime dependency is missing, such as Newman |
+| `5` | An unexpected internal CLI error occurred |
+
+Preserve stdout and stderr only after checking that the output contains no
+credentials or customer data. Use finite job timeouts in CI, pin the installed
+package version, and make the selected project, cycle, environment, browser
+infrastructure, and reporting destination explicit in the job configuration.
 
 ## Troubleshooting
 
