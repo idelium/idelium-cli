@@ -1,0 +1,67 @@
+{
+  "kind": "document",
+  "schemaVersion": "1.0",
+  "languageVersion": "1.0",
+  "sourceName": "complete.idelium",
+  "tests": [
+    {
+      "kind": "test",
+      "name": "Complete DSL v1 surface",
+      "statements": [
+        {
+          "kind": "open",
+          "url": "https://example.invalid/login",
+          "span": {"start": {"line": 4, "column": 5}, "end": {"line": 4, "column": 49}}
+        },
+        {
+          "kind": "wait",
+          "locator": {"strategy": "css", "value": "#email"},
+          "condition": "visible",
+          "timeoutMilliseconds": 10000,
+          "span": {"start": {"line": 5, "column": 5}, "end": {"line": 5, "column": 48}}
+        },
+        {
+          "kind": "write",
+          "locator": {"strategy": "css", "value": "#email"},
+          "value": "user@example.invalid",
+          "sensitive": true,
+          "span": {"start": {"line": 6, "column": 5}, "end": {"line": 6, "column": 62}}
+        },
+        {
+          "kind": "click",
+          "locator": {"strategy": "xpath", "value": "//button[@type='submit']"},
+          "span": {"start": {"line": 7, "column": 5}, "end": {"line": 7, "column": 48}}
+        },
+        {
+          "kind": "assertVisibility",
+          "locator": {"strategy": "css", "value": "#dashboard"},
+          "expected": "visible",
+          "span": {"start": {"line": 8, "column": 5}, "end": {"line": 8, "column": 42}}
+        },
+        {
+          "kind": "assertText",
+          "locator": {"strategy": "css", "value": "h1"},
+          "comparison": "equals",
+          "expected": "Dashboard",
+          "sensitive": false,
+          "span": {"start": {"line": 9, "column": 5}, "end": {"line": 9, "column": 50}}
+        },
+        {
+          "kind": "back",
+          "span": {"start": {"line": 10, "column": 5}, "end": {"line": 10, "column": 9}}
+        },
+        {
+          "kind": "forward",
+          "span": {"start": {"line": 11, "column": 5}, "end": {"line": 11, "column": 12}}
+        },
+        {
+          "kind": "screenshot",
+          "name": "complete-surface",
+          "span": {"start": {"line": 12, "column": 5}, "end": {"line": 12, "column": 34}}
+        }
+      ],
+      "span": {"start": {"line": 3, "column": 1}, "end": {"line": 13, "column": 2}}
+    }
+  ]
+}
+

@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DSL_V1_ROOT = REPOSITORY_ROOT / "docs" / "dsl" / "v1"
@@ -46,7 +48,10 @@ class DslSpecificationTest(unittest.TestCase):
         manifest = (REPOSITORY_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
         readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("recursive-include docs/dsl *.ebnf *.idelium *.md", manifest)
+        self.assertIn(
+            "recursive-include docs/dsl *.ebnf *.idelium *.json *.md",
+            manifest,
+        )
         self.assertIn(
             "https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md",
             readme,
@@ -75,6 +80,55 @@ class DslSpecificationTest(unittest.TestCase):
         for example in examples:
             with self.subTest(example=example.name):
                 self._validate_example(example)
+
+    def test_canonical_ast_schema_and_example_are_valid(self):
+        schema = json.loads(
+            (DSL_V1_ROOT / "ast.schema.json").read_text(encoding="utf-8")
+        )
+        ast = json.loads(
+            (DSL_V1_ROOT / "examples" / "complete.ast.json").read_text(encoding="utf-8")
+        )
+
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        validator.validate(ast)
+        self.assertEqual(ast, json.loads(json.dumps(ast)))
+        self.assertEqual(
+            {
+                "open",
+                "wait",
+                "write",
+                "click",
+                "assertVisibility",
+                "assertText",
+                "back",
+                "forward",
+                "screenshot",
+            },
+            {
+                statement["kind"]
+                for test in ast["tests"]
+                for statement in test["statements"]
+            },
+        )
+
+    def test_canonical_ast_rejects_unknown_or_incompatible_input(self):
+        schema = json.loads(
+            (DSL_V1_ROOT / "ast.schema.json").read_text(encoding="utf-8")
+        )
+        valid_ast = json.loads(
+            (DSL_V1_ROOT / "examples" / "complete.ast.json").read_text(encoding="utf-8")
+        )
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+
+        incompatible = {**valid_ast, "schemaVersion": "2.0"}
+        unknown_field = {**valid_ast, "credential": "must-not-be-accepted"}
+        unknown_statement = json.loads(json.dumps(valid_ast))
+        unknown_statement["tests"][0]["statements"][0]["kind"] = "python"
+
+        self.assertFalse(validator.is_valid(incompatible))
+        self.assertFalse(validator.is_valid(unknown_field))
+        self.assertFalse(validator.is_valid(unknown_statement))
 
     def _validate_example(self, path):
         lines = [

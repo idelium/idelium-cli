@@ -103,7 +103,10 @@ setup(
             'pip-audit>=2.7,<3',
             'ruff>=0.11,<1',
         ],
-        'test': ['coverage>=7,<8'],
+        'test': [
+            'coverage>=7,<8',
+            'jsonschema>=4.23,<5',
+        ],
     },
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/idelium/idelium-cli/issues',

@@ -8,7 +8,7 @@ backend.
 
 | Version | Status | Specification |
 | --- | --- | --- |
-| 1.0 | Draft | [DSL v1 specification](v1/SPECIFICATION.md) |
+| 1.0 | Draft | [DSL v1 specification](v1/SPECIFICATION.md) and [canonical AST](v1/AST.md) |
 
 The v1 specification is normative for the language surface. The current Idelium
 CLI still executes persisted JSON steps; parser, canonical AST, and execution
@@ -23,4 +23,3 @@ runtime work is tracked separately in the product roadmap.
   guidance.
 - Deprecated syntax remains accepted for the documented deprecation window.
 - An implementation must reject unsupported versions before executing any step.
-

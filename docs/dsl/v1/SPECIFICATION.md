@@ -386,3 +386,6 @@ The canonical AST schema, parser implementation, and execution adapter are
 separate versioned contracts and may evolve independently while preserving these
 language semantics.
 
+The DSL v1 canonical representation is defined by the
+[AST contract](AST.md) and its machine-readable
+[JSON Schema](ast.schema.json).
