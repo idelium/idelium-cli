@@ -10,8 +10,10 @@ from idelium._internal.bidi import (
     BidiLifecycleError,
     BidiSessionLifecycle,
     build_bidi_console_artifact,
+    build_bidi_network_artifact,
     negotiate_bidi_capabilities,
     normalize_bidi_console_event,
+    normalize_bidi_network_event,
     normalize_bidi_mode,
 )
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
@@ -240,6 +242,77 @@ class BidiNegotiationTest(unittest.TestCase):
             "password=[REDACTED]",
             artifact["data"]["events"][0]["text"],
         )
+
+    def test_network_event_normalization_uses_allow_list_and_redaction(self):
+        normalized = normalize_bidi_network_event(
+            {
+                "type": "network.responseCompleted",
+                "params": {
+                    "requestId": "request-1",
+                    "request": {
+                        "method": "post",
+                        "url": "https://example.test/api?token=abc&debug=1",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer abc",
+                            "Cookie": "sid=secret",
+                            "X-Internal": "drop-me",
+                        },
+                    },
+                    "response": {
+                        "status": 200,
+                        "statusText": "OK",
+                        "timingMilliseconds": 42,
+                    },
+                    "body": "must not be captured",
+                },
+            }
+        )
+
+        self.assertEqual("POST", normalized["method"])
+        self.assertEqual(
+            "https://example.test/api?token=%5BREDACTED%5D&debug=1",
+            normalized["url"],
+        )
+        self.assertEqual(200, normalized["status"])
+        self.assertEqual({"content-type": "application/json"}, normalized["headers"])
+        self.assertFalse(normalized["bodyCaptured"])
+        self.assertNotIn("body", normalized)
+
+    def test_network_artifact_tracks_truncated_and_dropped_events(self):
+        events = [
+            normalize_bidi_network_event(
+                {
+                    "type": "network.beforeRequestSent",
+                    "params": {
+                        "request": {"method": "GET", "url": f"https://e.test/{index}"}
+                    },
+                }
+            )
+            for index in range(3)
+        ]
+
+        artifact = build_bidi_network_artifact(events, dropped_events=2, limit=1)
+
+        self.assertEqual("bidi-network-events", artifact["name"])
+        self.assertEqual(3, artifact["data"]["totalEvents"])
+        self.assertEqual(2, artifact["data"]["droppedEvents"])
+        self.assertTrue(artifact["data"]["truncated"])
+        self.assertEqual(1, len(artifact["data"]["events"]))
+
+    def test_lifecycle_network_artifact_is_added_on_close(self):
+        config = {
+            "bidiNegotiation": {"state": "supported", "mode": "auto"},
+        }
+        driver = Mock()
+        driver.capabilities = {"webSocketUrl": "ws://grid/session/secret"}
+        lifecycle = IdeliumSelenium._start_bidi_session(driver, config)
+        lifecycle.record_network_event({"type": "network.fetchError"})
+
+        IdeliumSelenium.close_bidi_session(config)
+
+        artifact_types = {artifact["type"] for artifact in config["bidiArtifacts"]}
+        self.assertIn("application/vnd.idelium.bidi.network+json", artifact_types)
 
 
 if __name__ == "__main__":

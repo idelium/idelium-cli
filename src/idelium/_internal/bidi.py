@@ -18,15 +18,31 @@ BIDI_LIFECYCLE_OPEN = "open"
 BIDI_LIFECYCLE_CLOSED = "closed"
 BIDI_LIFECYCLE_FAILED = "failed"
 BIDI_CONSOLE_ARTIFACT_TYPE = "application/vnd.idelium.bidi.console+json"
+BIDI_NETWORK_ARTIFACT_TYPE = "application/vnd.idelium.bidi.network+json"
 BIDI_CONSOLE_SCHEMA_VERSION = "1.0"
 BIDI_CONSOLE_MAX_EVENTS = 100
 BIDI_CONSOLE_MAX_MESSAGE_LENGTH = 2000
+BIDI_NETWORK_MAX_EVENTS = 100
 BIDI_CONSOLE_EVENT_TYPES = {
     "log.entryAdded",
     "runtime.consoleAPICalled",
     "cdp.Runtime.consoleAPICalled",
 }
+BIDI_NETWORK_EVENT_TYPES = {
+    "network.beforeRequestSent",
+    "network.responseStarted",
+    "network.responseCompleted",
+    "network.fetchError",
+}
 BIDI_CONSOLE_LEVELS = {"debug", "error", "info", "log", "trace", "warning", "warn"}
+BIDI_NETWORK_HEADER_ALLOW_LIST = {
+    "accept",
+    "cache-control",
+    "content-length",
+    "content-type",
+    "host",
+    "user-agent",
+}
 _SENSITIVE_KEYS = {
     "authorization",
     "cookie",
@@ -74,6 +90,8 @@ class BidiSessionLifecycle:
         self.message = "WebDriver BiDi lifecycle is inactive."
         self._resources: list[Any] = []
         self._console_events: list[dict[str, Any]] = []
+        self._network_events: list[dict[str, Any]] = []
+        self._dropped_network_events = 0
 
     @staticmethod
     def _negotiation_dict(
@@ -116,6 +134,32 @@ class BidiSessionLifecycle:
         """Return a bounded console-event artifact or None when no events exist."""
 
         return build_bidi_console_artifact(self._console_events, limit=limit)
+
+    def record_network_event(
+        self,
+        event: dict[str, Any],
+        *,
+        sensitive_values: list[Any] | None = None,
+    ) -> None:
+        """Record allow-listed, redacted network metadata for later reporting."""
+
+        normalized = normalize_bidi_network_event(
+            event,
+            sensitive_values=sensitive_values,
+        )
+        if normalized is None:
+            self._dropped_network_events += 1
+            return
+        self._network_events.append(normalized)
+
+    def network_artifact(self, *, limit: int = BIDI_NETWORK_MAX_EVENTS):
+        """Return a bounded network-metadata artifact or None when no events exist."""
+
+        return build_bidi_network_artifact(
+            self._network_events,
+            dropped_events=self._dropped_network_events,
+            limit=limit,
+        )
 
     def open(self, driver: Any) -> "BidiSessionLifecycle":
         """Start lifecycle tracking after a successful WebDriver session."""
@@ -272,6 +316,72 @@ def build_bidi_console_artifact(
     }
 
 
+def normalize_bidi_network_event(
+    event: dict[str, Any],
+    *,
+    sensitive_values: list[Any] | None = None,
+) -> dict[str, Any] | None:
+    """Normalize one selected WebDriver BiDi network event fixture."""
+
+    event_type = _safe_text(event.get("type") or event.get("method"))
+    if event_type not in BIDI_NETWORK_EVENT_TYPES:
+        return None
+    params = event.get("params") if isinstance(event.get("params"), dict) else event
+    request = params.get("request") if isinstance(params.get("request"), dict) else {}
+    response = (
+        params.get("response") if isinstance(params.get("response"), dict) else {}
+    )
+    headers = request.get("headers") or response.get("headers") or params.get("headers")
+    return {
+        "type": event_type,
+        "requestId": _safe_text(
+            params.get("requestId") or request.get("request") or request.get("id")
+        ),
+        "method": _safe_text(request.get("method") or params.get("method")).upper(),
+        "url": _redact_url(
+            request.get("url") or response.get("url") or params.get("url"),
+            sensitive_values,
+        ),
+        "status": _safe_int(response.get("status") or params.get("status")),
+        "statusText": _safe_text(
+            response.get("statusText") or params.get("statusText")
+        ),
+        "timingMilliseconds": _safe_int(
+            response.get("timingMilliseconds")
+            or params.get("timingMilliseconds")
+            or params.get("duration")
+        ),
+        "headers": _allow_list_headers(headers),
+        "bodyCaptured": False,
+    }
+
+
+def build_bidi_network_artifact(
+    events: list[dict[str, Any]],
+    *,
+    dropped_events: int = 0,
+    limit: int = BIDI_NETWORK_MAX_EVENTS,
+) -> dict[str, Any] | None:
+    """Build a bounded network-metadata artifact for execution reports."""
+
+    bounded_limit = max(0, int(limit or 0))
+    if not events and dropped_events == 0:
+        return None
+    selected_events = events[:bounded_limit]
+    return {
+        "name": "bidi-network-events",
+        "type": BIDI_NETWORK_ARTIFACT_TYPE,
+        "path": "",
+        "data": {
+            "schemaVersion": BIDI_CONSOLE_SCHEMA_VERSION,
+            "totalEvents": len(events),
+            "droppedEvents": max(0, int(dropped_events or 0)),
+            "truncated": len(events) > len(selected_events),
+            "events": selected_events,
+        },
+    }
+
+
 def negotiate_bidi_capabilities(
     *,
     browser: Any,
@@ -365,6 +475,32 @@ def _redact_url(value: Any, sensitive_values: list[Any] | None = None) -> str:
         ]
     )
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def _allow_list_headers(value: Any) -> dict[str, str]:
+    headers = _header_items(value)
+    return {
+        key.lower(): _safe_text(redact_bidi_value(header_value))
+        for key, header_value in headers
+        if key.lower() in BIDI_NETWORK_HEADER_ALLOW_LIST
+    }
+
+
+def _header_items(value: Any) -> list[tuple[str, Any]]:
+    if isinstance(value, dict):
+        return [(str(key), item) for key, item in value.items()]
+    if isinstance(value, list):
+        items = []
+        for header in value:
+            if isinstance(header, dict):
+                name = header.get("name")
+                header_value = header.get("value")
+                if name:
+                    items.append((str(name), header_value))
+            elif isinstance(header, (list, tuple)) and len(header) >= 2:
+                items.append((str(header[0]), header[1]))
+        return items
+    return []
 
 
 def _is_sensitive_key(value: Any) -> bool:

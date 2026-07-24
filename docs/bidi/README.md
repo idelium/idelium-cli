@@ -83,3 +83,38 @@ captured, the artifact sets `truncated=true` and records `totalEvents`.
 Before storage, Idelium redacts common credential keys and configured sensitive
 values, including authorization headers, cookies, passwords, secrets, sessions,
 tokens, and API keys. BiDi endpoint URLs are never persisted.
+
+## Network metadata artifacts
+
+Idelium normalizes selected browser network events into bounded execution
+artifacts with type `application/vnd.idelium.bidi.network+json`.
+
+Supported event types:
+
+- `network.beforeRequestSent`
+- `network.responseStarted`
+- `network.responseCompleted`
+- `network.fetchError`
+
+Each normalized network event contains only allow-listed metadata:
+
+| Field | Meaning |
+| --- | --- |
+| `type` | Original BiDi network event type. |
+| `requestId` | Browser request identifier when available. |
+| `method` | HTTP method, upper-cased. |
+| `url` | Redacted URL. Sensitive query values are replaced. |
+| `status` | HTTP response status when available. |
+| `statusText` | HTTP status text when available. |
+| `timingMilliseconds` | Deterministic duration/timing value when provided. |
+| `headers` | Selected request or response headers from the allow-list. |
+| `bodyCaptured` | Always `false` by default. Bodies are not stored. |
+
+Allowed header names are `accept`, `cache-control`, `content-length`,
+`content-type`, `host`, and `user-agent`. Authorization, cookie, session, token,
+secret, password, key, and custom headers are excluded by default.
+
+Network artifacts are limited to 100 events by default. Unsupported or
+unrecognized event payloads increment `droppedEvents`; excess events set
+`truncated=true`. Request and response bodies are never captured unless a future
+feature explicitly defines a redacted, size-limited body contract.
