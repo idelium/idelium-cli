@@ -142,6 +142,7 @@ flag.
 | `--ideliumKey=<key>` | API key; prefer the protected key file | `~/.idelium` |
 | `--jsonReport=<path>` | Write a canonical local JSON execution report | disabled |
 | `--htmlReport=<path>` | Write a self-contained local HTML execution report | disabled |
+| `--junitReport=<path>` | Write a JUnit XML report for CI test consumers | disabled |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
 
@@ -207,20 +208,23 @@ response bodies, sensitive query parameters, or session identifiers.
 ## Local execution reports
 
 Use `--jsonReport=<path>` to write a canonical machine-readable execution report
-and `--htmlReport=<path>` to write a self-contained human-readable report:
+and `--htmlReport=<path>` to write a self-contained human-readable report. Use
+`--junitReport=<path>` when CI should ingest Idelium results through its
+standard JUnit test-report view:
 
 ```bash
 idelium --idCycle=2 --idProject=3 --environment=demo \
   --ideliumwsBaseurl=https://localhost \
   --jsonReport=reports/idelium-report.json \
-  --htmlReport=reports/idelium-report.html
+  --htmlReport=reports/idelium-report.html \
+  --junitReport=reports/idelium-junit.xml
 ```
 
-Both files are generated from the same schema-versioned result contract. JSON
-reports follow the schema published at
+All local report files are generated from the same schema-versioned result
+contract. JSON reports follow the schema published at
 https://github.com/idelium/idelium-cli/blob/main/docs/reports/execution-report.schema.json.
-HTML reports escape untrusted content. Sensitive diagnostic fragments and
-sensitive URL query values are redacted before either format is written.
+HTML and JUnit reports escape untrusted content. Sensitive diagnostic fragments
+and sensitive URL query values are redacted before any format is written.
 
 ## Selenium execution
 

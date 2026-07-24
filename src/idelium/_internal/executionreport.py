@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,80 @@ def write_html_report(report: dict[str, Any], path: str | Path) -> None:
 
     report_path = _prepare_output_path(path)
     report_path.write_text(render_html_report(report), encoding="utf-8")
+
+
+def write_junit_report(report: dict[str, Any], path: str | Path) -> None:
+    """Write a JUnit XML report suitable for CI test result consumers."""
+
+    report_path = _prepare_output_path(path)
+    report_path.write_text(render_junit_report(report), encoding="utf-8")
+
+
+def render_junit_report(report: dict[str, Any]) -> str:
+    """Render the canonical execution report as JUnit XML."""
+
+    summary = report.get("summary", {})
+    tests = report.get("tests", [])
+    root = ET.Element(
+        "testsuites",
+        {
+            "name": "Idelium",
+            "tests": str(int(summary.get("steps", 0))),
+            "failures": str(int(summary.get("failed", 0))),
+            "skipped": str(int(summary.get("skipped", 0))),
+            "time": _seconds(sum(_test_duration(test) for test in tests)),
+        },
+    )
+    for test in tests:
+        steps = test.get("steps", [])
+        suite = ET.SubElement(
+            root,
+            "testsuite",
+            {
+                "name": _safe_string(test.get("name") or "Idelium test"),
+                "tests": str(len(steps)),
+                "failures": str(
+                    sum(1 for step in steps if step.get("status") == "failed")
+                ),
+                "skipped": str(
+                    sum(1 for step in steps if step.get("status") == "skipped")
+                ),
+                "time": _seconds(_test_duration(test)),
+            },
+        )
+        for step in steps:
+            diagnostics = _step_diagnostics_text(step)
+            case = ET.SubElement(
+                suite,
+                "testcase",
+                {
+                    "classname": _safe_string(test.get("name") or "Idelium test"),
+                    "name": _safe_string(step.get("name") or "Idelium step"),
+                    "time": _seconds(int(step.get("durationMilliseconds", 0))),
+                },
+            )
+            if step.get("status") == "failed":
+                failure = ET.SubElement(
+                    case,
+                    "failure",
+                    {
+                        "message": diagnostics or "Step failed.",
+                        "type": _safe_string(step.get("type") or "idelium.step"),
+                    },
+                )
+                failure.text = diagnostics or "Step failed."
+            elif step.get("status") == "skipped":
+                skipped = ET.SubElement(
+                    case,
+                    "skipped",
+                    {"message": diagnostics or "Step skipped."},
+                )
+                skipped.text = diagnostics or "Step skipped."
+            if diagnostics:
+                system_out = ET.SubElement(case, "system-out")
+                system_out.text = diagnostics
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n"
 
 
 def render_html_report(report: dict[str, Any]) -> str:
@@ -278,6 +353,25 @@ def _prepare_output_path(path: str | Path) -> Path:
     report_path = Path(path).expanduser()
     report_path.parent.mkdir(parents=True, exist_ok=True)
     return report_path
+
+
+def _test_duration(test: dict[str, Any]) -> int:
+    return sum(
+        int(step.get("durationMilliseconds") or 0) for step in test.get("steps", [])
+    )
+
+
+def _seconds(milliseconds: int) -> str:
+    return f"{max(0, milliseconds) / 1000:.3f}"
+
+
+def _step_diagnostics_text(step: dict[str, Any]) -> str:
+    diagnostics = [
+        diagnostic.get("message", "")
+        for diagnostic in step.get("diagnostics", [])
+        if diagnostic.get("message")
+    ]
+    return "\n".join(_safe_string(message) for message in diagnostics)
 
 
 def _escape(value: Any) -> str:

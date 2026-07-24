@@ -12,6 +12,7 @@ from idelium._internal.commons.connection import Connection, HttpTransportError
 from idelium._internal.executionreport import (
     build_execution_report,
     write_html_report,
+    write_junit_report,
     write_json_report,
 )
 from idelium._internal.exitcodes import (
@@ -501,7 +502,11 @@ class IdeliumWs:
 
     @staticmethod
     def _write_execution_reports(report_events, config, exit_code, printer):
-        if not config.get("jsonReport") and not config.get("htmlReport"):
+        if (
+            not config.get("jsonReport")
+            and not config.get("htmlReport")
+            and not config.get("junitReport")
+        ):
             return
         report = build_execution_report(
             report_events,
@@ -514,3 +519,8 @@ class IdeliumWs:
         if config.get("htmlReport"):
             write_html_report(report, config["htmlReport"])
             printer.success("HTML execution report written to " + config["htmlReport"])
+        if config.get("junitReport"):
+            write_junit_report(report, config["junitReport"])
+            printer.success(
+                "JUnit XML execution report written to " + config["junitReport"]
+            )

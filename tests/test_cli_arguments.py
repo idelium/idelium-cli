@@ -84,6 +84,8 @@ class CliArgumentParsingTest(unittest.TestCase):
                 "--jsonReport",
                 "reports/result.json",
                 "--htmlReport=reports/result.html",
+                "--junitReport",
+                "reports/result.xml",
             ],
             Mock(),
             printer,
@@ -91,6 +93,7 @@ class CliArgumentParsingTest(unittest.TestCase):
 
         self.assertEqual("reports/result.json", defined["cl_params"]["jsonReport"])
         self.assertEqual("reports/result.html", defined["cl_params"]["htmlReport"])
+        self.assertEqual("reports/result.xml", defined["cl_params"]["junitReport"])
 
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
