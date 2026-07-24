@@ -24,6 +24,20 @@ CI, and Bamboo, and remotely managed test-execution hosts.
 - Operate as an HTTPS listener for remotely launched enterprise executions.
 - Verify TLS certificates by default with configurable finite timeouts.
 
+## Idelium DSL
+
+The versioned
+[Idelium DSL specification](https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md)
+defines the human-readable language that will sit above the execution engine.
+DSL v1.0 currently specifies navigation, locators, input, explicit waits,
+assertions, browser history, screenshots, diagnostics, security, and
+compatibility rules.
+
+The current CLI continues to execute persisted JSON steps while the canonical
+AST, parser, and DSL runtime are implemented through the roadmap. Publishing the
+language contract first prevents those components from defining incompatible
+syntax independently.
+
 ## Requirements
 
 - CPython 3.10, 3.11, 3.12, or 3.13.

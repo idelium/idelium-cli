@@ -1,0 +1,8 @@
+idelium 1.0
+
+test "Open the product page" {
+    open "https://example.invalid/product"
+    wait css "main" visible timeout 10s
+    assert visible css "main"
+}
+

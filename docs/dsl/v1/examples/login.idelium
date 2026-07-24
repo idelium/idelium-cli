@@ -1,0 +1,16 @@
+idelium 1.0
+
+# Values in a production test should come from the future secure parameter
+# mechanism rather than being committed as literals.
+test "Sign in and open the dashboard" {
+    open "https://example.invalid/login"
+    wait css "#email" visible timeout 10s
+    write css "#email" value "user@example.invalid"
+    write css "#password" value "example-placeholder"
+    wait css "button[type='submit']" clickable timeout 10s
+    click css "button[type='submit']"
+    wait css "#dashboard" visible timeout 20s
+    assert text css "h1" equals "Dashboard"
+    screenshot "dashboard-loaded"
+}
+

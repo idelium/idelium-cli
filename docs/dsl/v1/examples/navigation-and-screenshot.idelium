@@ -1,0 +1,12 @@
+idelium 1.0
+
+test "Navigate browser history" {
+    open "https://example.invalid/start"
+    click css "a.next-page"
+    wait xpath "//h1" visible timeout 5s
+    assert text xpath "//h1" contains "Next"
+    back
+    forward
+    screenshot "history-navigation"
+}
+

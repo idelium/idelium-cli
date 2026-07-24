@@ -1,0 +1,75 @@
+(* Idelium DSL 1.0 normative grammar. *)
+
+source             = spacing, version-declaration, separator,
+                     test-declaration, { separator, test-declaration },
+                     spacing, end-of-input ;
+
+version-declaration = "idelium", required-spacing, "1.0" ;
+
+test-declaration   = "test", required-spacing, string, spacing, "{",
+                     spacing, [ statement-list ], spacing, "}" ;
+
+statement-list     = statement, { statement-separator, statement },
+                     [ statement-separator ] ;
+
+statement          = open-statement
+                   | click-statement
+                   | write-statement
+                   | wait-statement
+                   | assert-visible-statement
+                   | assert-text-statement
+                   | back-statement
+                   | forward-statement
+                   | screenshot-statement ;
+
+open-statement     = "open", required-spacing, string ;
+click-statement    = "click", required-spacing, locator ;
+write-statement    = "write", required-spacing, locator,
+                     required-spacing, "value", required-spacing, string ;
+wait-statement     = "wait", required-spacing, locator,
+                     required-spacing, wait-condition,
+                     [ required-spacing, "timeout", required-spacing, duration ] ;
+
+assert-visible-statement = "assert", required-spacing,
+                           visibility-condition, required-spacing, locator ;
+assert-text-statement = "assert", required-spacing, "text",
+                        required-spacing, locator, required-spacing,
+                        text-comparison, required-spacing, string ;
+
+back-statement     = "back" ;
+forward-statement  = "forward" ;
+screenshot-statement = "screenshot", required-spacing, string ;
+
+locator            = locator-strategy, required-spacing, string ;
+locator-strategy   = "css" | "xpath" ;
+wait-condition     = "present" | "visible" | "hidden" | "clickable" ;
+visibility-condition = "visible" | "hidden" ;
+text-comparison    = "equals" | "contains" ;
+
+duration           = positive-integer, ( "ms" | "s" | "m" ) ;
+positive-integer   = non-zero-digit, { digit } ;
+non-zero-digit     = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+digit              = "0" | non-zero-digit ;
+
+string             = '"', { string-character | escape-sequence }, '"' ;
+string-character   = ? any Unicode scalar value except quotation mark,
+                       reverse solidus, and control characters ? ;
+escape-sequence    = "\", ( '"' | "\" | "/" | "b" | "f" | "n" | "r" | "t"
+                           | unicode-escape ) ;
+unicode-escape     = "u", hex-digit, hex-digit, hex-digit, hex-digit ;
+hex-digit          = digit | "A" | "B" | "C" | "D" | "E" | "F"
+                           | "a" | "b" | "c" | "d" | "e" | "f" ;
+
+statement-separator = spacing, ( line-break | ";" ), spacing ;
+separator          = spacing, ( line-break | ";" ), spacing ;
+required-spacing   = spacing-character, { spacing-character | comment } ;
+spacing            = { spacing-character | line-break | comment } ;
+spacing-character  = " " | tab ;
+line-break         = CR, LF | LF ;
+comment            = "#", { ? any character except CR or LF ? },
+                     [ line-break ] ;
+tab                = ? Unicode U+0009 ? ;
+CR                 = ? Unicode U+000D ? ;
+LF                 = ? Unicode U+000A ? ;
+end-of-input       = ? end of source ? ;
+

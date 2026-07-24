@@ -3,6 +3,7 @@ include LICENSE
 include NEWS.rst
 include README.md
 include pyproject.toml
+recursive-include docs/dsl *.ebnf *.idelium *.md
 recursive-include scripts *.sh
 prune .github
 prune docs/build
