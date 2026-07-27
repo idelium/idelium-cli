@@ -70,6 +70,8 @@ class SeleniumCommandTest(unittest.TestCase):
 
     def test_alert_and_window_operations_are_allow_listed(self):
         driver = Mock()
+        driver.window_handles = ["first", "second"]
+        driver.current_window_handle = "second"
         wrapper = IdeliumSelenium()
 
         alert_result = wrapper.command(
@@ -84,11 +86,53 @@ class SeleniumCommandTest(unittest.TestCase):
             {},
             {"operation": "new_window", "windowType": "tab"},
         )
+        handles_result = wrapper.command(
+            "selenium_command",
+            driver,
+            {},
+            {"operation": "get_window_handles"},
+        )
+        handle_result = wrapper.command(
+            "selenium_command",
+            driver,
+            {},
+            {"operation": "get_window_handle"},
+        )
 
         self.assertEqual(Result.OK, alert_result["returnCode"])
         self.assertEqual(Result.OK, window_result["returnCode"])
+        self.assertEqual(["first", "second"], handles_result["value"])
+        self.assertEqual("second", handle_result["value"])
         driver.switch_to.alert.accept.assert_called_once_with()
         driver.switch_to.new_window.assert_called_once_with("tab")
+
+    def test_frame_operations_are_allow_listed(self):
+        driver = Mock()
+        frame = Mock()
+        driver.find_element.return_value = frame
+        wrapper = IdeliumSelenium()
+
+        frame_result = wrapper.command(
+            "selenium_command",
+            driver,
+            {},
+            {
+                "operation": "switch_frame",
+                "findBy": "css",
+                "target": "iframe[data-testid='frame']",
+            },
+        )
+        default_result = wrapper.command(
+            "selenium_command",
+            driver,
+            {},
+            {"operation": "switch_default_content"},
+        )
+
+        self.assertEqual(Result.OK, frame_result["returnCode"])
+        self.assertEqual(Result.OK, default_result["returnCode"])
+        driver.switch_to.frame.assert_called_once_with(frame)
+        driver.switch_to.default_content.assert_called_once_with()
 
     def test_element_state_returns_driver_state(self):
         driver = Mock()
@@ -134,6 +178,45 @@ class SeleniumCommandTest(unittest.TestCase):
         self.assertEqual(Result.OK, result["returnCode"])
         element.send_keys.assert_called_once_with("/tmp/example.txt")
 
+    def test_download_behavior_uses_safe_chromium_handler(self):
+        driver = Mock()
+        wrapper = IdeliumSelenium()
+
+        result = wrapper.command(
+            "selenium_command",
+            driver,
+            {},
+            {
+                "operation": "set_download_behavior",
+                "downloadPath": "/tmp/downloads",
+            },
+        )
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        driver.execute_cdp_cmd.assert_called_once_with(
+            "Page.setDownloadBehavior",
+            {"behavior": "allow", "downloadPath": "/tmp/downloads"},
+        )
+
+    def test_download_behavior_fails_safely_without_cdp_support(self):
+        class DriverWithoutCdp:
+            pass
+
+        wrapper = IdeliumSelenium()
+
+        result = wrapper.command(
+            "selenium_command",
+            DriverWithoutCdp(),
+            {},
+            {
+                "operation": "set_download_behavior",
+                "downloadPath": "/tmp/downloads",
+            },
+        )
+
+        self.assertEqual(Result.KO, result["returnCode"])
+        self.assertEqual("IDELIUM_WEBDRIVER_CONTRACT_ERROR", result["error"]["code"])
+
     def test_unsupported_operation_fails_safely(self):
         driver = Mock()
         wrapper = IdeliumSelenium()
@@ -146,6 +229,7 @@ class SeleniumCommandTest(unittest.TestCase):
         )
 
         self.assertEqual(Result.KO, result["returnCode"])
+        self.assertEqual("IDELIUM_WEBDRIVER_CONTRACT_ERROR", result["error"]["code"])
         driver.execute_script.assert_not_called()
 
 

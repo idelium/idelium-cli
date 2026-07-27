@@ -1,5 +1,6 @@
 import unittest
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -423,6 +424,150 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
 
         wrapper.close_bidi_session.assert_called_once_with(config, printer)
         driver.quit.assert_called_once_with()
+
+    def test_selenium_failure_adds_bounded_screenshot_artifact_to_report(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        driver = Mock()
+        wrapper = Mock()
+
+        def write_screenshot(current_driver, path, is_server):
+            Path(path).write_bytes(b"png")
+
+        wrapper.screen_shot.side_effect = write_screenshot
+        idelium = Mock()
+        idelium.get_wrapper.return_value = wrapper
+        idelium.execute_step.return_value = {
+            "status": "2",
+            "driver": driver,
+            "postman_data": [],
+            "type": "seleniumOrAppium",
+            "step_failed": {"stepType": "click"},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            previous_directory = os.getcwd()
+            os.chdir(directory)
+            try:
+                json_report = Path(directory) / "report.json"
+                config = {
+                    "idCycle": "2",
+                    "idProject": "3",
+                    "test": True,
+                    "ideliumServer": False,
+                    "printer": printer,
+                    "jsonReport": str(json_report),
+                }
+                test_configurations = {
+                    "steps": {
+                        "browser_17": {
+                            "name": "browser",
+                            "attachScreenshot": False,
+                            "failedExit": False,
+                        }
+                    }
+                }
+                with (
+                    patch.object(web_service, "get_cycles") as get_cycles,
+                    patch.object(web_service, "get_tests") as get_tests,
+                ):
+                    get_cycles.return_value = [
+                        {
+                            "id": 11,
+                            "name": "browser cycle",
+                            "description": "browser cycle",
+                        }
+                    ]
+                    get_tests.return_value = [{"id": 17, "name": "browser"}]
+
+                    exit_code = web_service.start_test(
+                        idelium,
+                        test_configurations,
+                        config,
+                    )
+            finally:
+                os.chdir(previous_directory)
+
+            report = json.loads(json_report.read_text(encoding="utf-8"))
+
+        self.assertEqual(EXIT_TEST_FAILURE, exit_code)
+        artifact = report["tests"][0]["steps"][0]["artifacts"][0]
+        self.assertEqual("failure-screenshot.png", artifact["name"])
+        self.assertEqual("image/png", artifact["type"])
+        self.assertEqual("screenshots/11.png", artifact["path"])
+        self.assertEqual("3", artifact["data"]["sizeBytes"])
+        wrapper.screen_shot.assert_called_once()
+
+    def test_screenshot_errors_do_not_hide_original_failure(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        driver = Mock()
+        wrapper = Mock()
+        wrapper.screen_shot.side_effect = RuntimeError("screenshot unavailable")
+        idelium = Mock()
+        idelium.get_wrapper.return_value = wrapper
+        idelium.execute_step.return_value = {
+            "status": "2",
+            "driver": driver,
+            "postman_data": [],
+            "type": "seleniumOrAppium",
+            "step_failed": {"stepType": "click"},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            previous_directory = os.getcwd()
+            os.chdir(directory)
+            try:
+                json_report = Path(directory) / "report.json"
+                config = {
+                    "idCycle": "2",
+                    "idProject": "3",
+                    "test": True,
+                    "ideliumServer": False,
+                    "printer": printer,
+                    "jsonReport": str(json_report),
+                }
+                test_configurations = {
+                    "steps": {
+                        "browser_17": {
+                            "name": "browser",
+                            "attachScreenshot": True,
+                            "failedExit": False,
+                        }
+                    }
+                }
+                with (
+                    patch.object(web_service, "get_cycles") as get_cycles,
+                    patch.object(web_service, "get_tests") as get_tests,
+                ):
+                    get_cycles.return_value = [
+                        {
+                            "id": 11,
+                            "name": "browser cycle",
+                            "description": "browser cycle",
+                        }
+                    ]
+                    get_tests.return_value = [{"id": 17, "name": "browser"}]
+
+                    exit_code = web_service.start_test(
+                        idelium,
+                        test_configurations,
+                        config,
+                    )
+            finally:
+                os.chdir(previous_directory)
+
+            report = json.loads(json_report.read_text(encoding="utf-8"))
+
+        self.assertEqual(EXIT_TEST_FAILURE, exit_code)
+        self.assertEqual([], report["tests"][0]["steps"][0]["artifacts"])
+        self.assertEqual(
+            "Step failed during execution.",
+            report["tests"][0]["steps"][0]["diagnostics"][0]["message"],
+        )
+        printer.warning.assert_any_call(
+            "Failure screenshot capture failed without changing the test result."
+        )
 
 
 if __name__ == "__main__":

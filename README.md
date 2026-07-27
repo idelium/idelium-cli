@@ -30,8 +30,11 @@ The versioned
 [Idelium DSL specification](https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md)
 defines the human-readable language that will sit above the execution engine.
 DSL v1.0 currently specifies navigation, locators, input, explicit waits,
-assertions, browser history, screenshots, diagnostics, security, and
-compatibility rules.
+versioned assertions, browser history, screenshots, typed string variables,
+deterministic `${name}` interpolation, validated `if` blocks, bounded `repeat`
+loops, reusable `step` definitions invoked with `use`, diagnostics, security,
+and compatibility rules. `secret` variables are expanded only for execution and
+are redacted from normal runtime output and diagnostics.
 
 The current CLI continues to execute persisted JSON steps while the canonical
 AST, parser, and DSL runtime are implemented through the roadmap. Publishing the
@@ -315,8 +318,17 @@ title, frame availability, or element staleness without hard-coded sleeps.
 
 The `selenium_command` step exposes an allow-listed WebDriver command dispatcher
 for common operations such as navigation, JavaScript execution, cookies, alerts,
-windows/tabs, element state checks, file upload, and shadow DOM lookup. Unknown
-operations fail safely instead of falling through to arbitrary driver methods.
+windows/tabs, frames, element state checks, file upload, download behavior, and
+shadow DOM lookup. Unknown operations fail safely instead of falling through to
+arbitrary driver methods.
+Runtime element lookup now passes through the W3C WebDriver adapter contract,
+which validates supported `findBy`/`target` locator strategies, preserves legacy
+`xpath` payload compatibility, and returns classified redacted diagnostics. See
+[docs/webdriver-adapter/README.md](docs/webdriver-adapter/README.md) for the
+contract and error codes.
+Browser step failures can also capture one bounded failure screenshot artifact
+in local execution reports. Screenshot capture errors are reported as warnings
+and never replace the original step failure.
 
 The `selenium_actions` step exposes Selenium W3C Actions through an allow-listed
 chain for keyboard input, pointer moves/clicks, wheel scrolling, drag-and-drop,

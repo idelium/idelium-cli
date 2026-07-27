@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 import time
 import sys
+from pathlib import Path
 from urllib.parse import urlsplit
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -22,13 +23,19 @@ from selenium.webdriver.common.action_chains import ActionChains
 from idelium._internal.commons.ideliumprinter import InitPrinter
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.commons.seleniumkeyevent import EventKey
-from idelium._internal.commons.seleniumby import SelBy
 from idelium._internal.bidi import (
     BidiLifecycleError,
     BidiSessionLifecycle,
     negotiate_bidi_capabilities,
 )
 from idelium._internal.selector_diagnostics import collect_step_selector_diagnostics
+from idelium._internal.webdriver_adapter import (
+    W3CWebDriverAdapter,
+    WebDriverContractError,
+    build_locator,
+    classify_webdriver_error,
+    resolve_step_locator,
+)
 
 
 printer = InitPrinter()
@@ -53,10 +60,15 @@ class IdeliumSelenium:
         "get_cookies",
         "get_title",
         "get_url",
+        "get_window_handle",
+        "get_window_handles",
         "navigate_to",
         "new_window",
         "refresh",
+        "set_download_behavior",
         "shadow_find_element",
+        "switch_default_content",
+        "switch_frame",
         "switch_window",
     }
     SELENIUM_ACTIONS = {
@@ -72,6 +84,28 @@ class IdeliumSelenium:
         "scroll_by",
         "send_keys",
     }
+
+    @staticmethod
+    def _error_result(err):
+        """Return a legacy KO result with a classified WebDriver diagnostic."""
+        return {
+            "returnCode": Result.KO,
+            "error": classify_webdriver_error(err).as_dict(),
+        }
+
+    @staticmethod
+    def _find_step_element(driver, object_step, prefix=""):
+        """Find an element through the W3C WebDriver adapter contract."""
+        return W3CWebDriverAdapter(driver).find_element(
+            resolve_step_locator(object_step, prefix)
+        )
+
+    @staticmethod
+    def _find_step_elements(driver, object_step):
+        """Find elements through the W3C WebDriver adapter contract."""
+        return W3CWebDriverAdapter(driver).find_elements(
+            resolve_step_locator(object_step)
+        )
 
     @staticmethod
     def _selenium_capabilities(config):
@@ -175,52 +209,49 @@ class IdeliumSelenium:
     def find_element_by_xpath(driver, config, object_step):
         """find element by xpath condition"""
         try:
-            driver.find_element(SelBy().get_by("XPATH"), object_step["xpath"])
+            W3CWebDriverAdapter(driver).find_element(
+                build_locator("xpath", object_step["xpath"])
+            )
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def find_elements_by_xpath(driver, config, object_step):
         """find elements by xpath condition"""
         try:
-            elements = driver.find_elements(
-                SelBy().get_by("XPATH"), object_step["xpath"]
+            elements = W3CWebDriverAdapter(driver).find_elements(
+                build_locator("xpath", object_step["xpath"])
             )
             return {"returnCode": Result.OK if len(elements) > 0 else Result.KO}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def find_element(driver, config, object_step):
         """find element"""
         try:
-            driver.find_element(
-                SelBy().get_by(object_step["findBy"]), object_step["target"]
-            )
+            IdeliumSelenium._find_step_element(driver, object_step)
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def find_elements(driver, config, object_step):
         """find elements"""
         try:
-            elements = driver.find_elements(
-                SelBy().get_by(object_step["findBy"]),
-                object_step["target"],
-            )
+            elements = IdeliumSelenium._find_step_elements(driver, object_step)
             return {"returnCode": Result.OK if len(elements) > 0 else Result.KO}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def page_source(driver, config, object_step):
@@ -232,20 +263,13 @@ class IdeliumSelenium:
     def switch_to_frame(driver, config, object_step):
         """switch_to_frame"""
         try:
-            by = SelBy()
-            if "xpath" in object_step:
-                frame = driver.find_element(by.get_by("XPATH"), object_step["xpath"])
-            else:
-                frame = driver.find_element(
-                    by.get_by(object_step["findBy"]),
-                    object_step["target"],
-                )
+            frame = IdeliumSelenium._find_step_element(driver, object_step)
             driver.switch_to.frame(frame)
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def switch_to_default_content(driver, config, object_step):
@@ -264,14 +288,7 @@ class IdeliumSelenium:
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            by = SelBy()
-            if "xpath" in object_step:
-                element = driver.find_element(by.get_by("XPATH"), object_step["xpath"])
-            else:
-                element = driver.find_element(
-                    by.get_by(object_step["findBy"]),
-                    object_step["target"],
-                )
+            element = IdeliumSelenium._find_step_element(driver, object_step)
             element.click()
             printer.success("ok")
             return {"returnCode": Result.OK}
@@ -279,14 +296,25 @@ class IdeliumSelenium:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     @staticmethod
     def drag_and_drop(driver, config, object_step):
         """drag_and_drop"""
         try:
-            drag_element = driver.find_element_by_xpath(object_step["xpathDrag"])
-            drop_element = driver.find_element_by_xpath(object_step["xpathDrop"])
+            adapter = W3CWebDriverAdapter(driver)
+            drag_element = adapter.find_element(
+                build_locator(
+                    object_step.get("dragFindBy", "xpath"),
+                    object_step.get("dragTarget", object_step.get("xpathDrag")),
+                )
+            )
+            drop_element = adapter.find_element(
+                build_locator(
+                    object_step.get("dropFindBy", "xpath"),
+                    object_step.get("dropTarget", object_step.get("xpathDrop")),
+                )
+            )
             action = ActionChains(driver)
             action.drag_and_drop(drag_element, drop_element).perform()
             return {"returnCode": Result.OK}
@@ -294,7 +322,7 @@ class IdeliumSelenium:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {"returnCode": Result.KO}
+            return IdeliumSelenium._error_result(err)
 
     def open_browser(self, driver, config, object_step):
         """open browser"""
@@ -546,41 +574,25 @@ class IdeliumSelenium:
     def click(self, driver, config, object_step):
         """click"""
 
-        by = SelBy()
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            # for retrocompat
-            if "xpath" in object_step:
-                object_step["findBy"] = "XPATH"
-                object_step["target"] = object_step["xpath"]
-            driver.find_element(
-                by.get_by(object_step["findBy"]), object_step["target"]
-            ).click()
+            self._find_step_element(driver, object_step).click()
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return self._error_result(err)
 
     def select(self, driver, config, object_step):
         """select"""
 
-        by = SelBy()
         print(object_step)
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            # for retrocompat
-            if "xpath" in object_step:
-                object_step["findBy"] = "XPATH"
-                object_step["target"] = object_step["xpath"]
-            select = Select(
-                driver.find_element(
-                    by.get_by(object_step["findBy"]), object_step["target"]
-                )
-            )
+            select = Select(self._find_step_element(driver, object_step))
             if "selectType" in object_step:
                 if object_step["selectType"] == "label":
                     select.select_by_visible_text(object_step["value"])
@@ -601,33 +613,26 @@ class IdeliumSelenium:
         except BaseException as err:
             printer.danger("FAILED")
             printer.danger(err)
-            return {"returnCode": Result.KO}
+            return self._error_result(err)
 
     def clear(self, driver, config, object_step):
         """clear"""
 
-        by = SelBy()
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            if "xpath" in object_step:
-                object_step["findBy"] = "XPATH"
-                object_step["target"] = object_step["xpath"]
-            driver.find_element(
-                by.get_by(object_step["findBy"]), object_step["target"]
-            ).clear()
+            self._find_step_element(driver, object_step).clear()
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
-            return {"returnCode": Result.KO}
+            return self._error_result(err)
 
     def send_keys(self, driver, config, object_step):
         """send keys"""
 
         selenium_key = EventKey()
-        by = SelBy()
         try:
             string_to_input = object_step["text"]
             key = selenium_key.get_key(string_to_input)
@@ -638,41 +643,38 @@ class IdeliumSelenium:
                 string_to_input = key
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            if "xpath" in object_step:
-                object_step["findBy"] = "XPATH"
-                object_step["target"] = object_step["xpath"]
-            driver.find_element(
-                by.get_by(object_step["findBy"]), object_step["target"]
-            ).send_keys(string_to_input)
+            self._find_step_element(driver, object_step).send_keys(string_to_input)
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             # sys.exit(1)
-            return {"returnCode": Result.KO}
+            return self._error_result(err)
 
     def wait_for_next_step(self, driver, config, object_step):
         """wait for next step"""
-        by = SelBy()
-        if "xpath" in object_step:
-            object_step["findBy"] = "XPATH"
-            object_step["target"] = object_step["xpath"]
-        wait_seconds = object_step.get("waitSeconds", object_step.get("timeout", 20))
-        wait_condition = object_step.get("waitCondition", "presence")
-        if (
-            self.wait_for_next_step_real(
-                driver,
-                by.get_by(object_step["findBy"]),
-                object_step["target"],
-                object_step["note"],
-                wait_seconds,
-                wait_condition,
-            )
-            == Result.KO
-        ):
-            return {"returnCode": Result.KO}
-        return {"returnCode": Result.OK}
+        try:
+            locator = resolve_step_locator(object_step)
+            wait_seconds = object_step.get("waitSeconds", object_step.get("timeout", 20))
+            wait_condition = object_step.get("waitCondition", "presence")
+            if (
+                self.wait_for_next_step_real(
+                    driver,
+                    locator.strategy,
+                    locator.value,
+                    object_step["note"],
+                    wait_seconds,
+                    wait_condition,
+                )
+                == Result.KO
+            ):
+                return {"returnCode": Result.KO}
+            return {"returnCode": Result.OK}
+        except BaseException as err:
+            printer.danger("FAILED")
+            print(err)
+            return self._error_result(err)
 
     def wait_for_next_step_real(
         self, driver, by, target, note, wait_seconds=20, wait_condition="presence"
@@ -725,7 +727,9 @@ class IdeliumSelenium:
         """Execute an allow-listed generic Selenium WebDriver command."""
         operation = object_step.get("operation") or object_step.get("command")
         if operation not in self.SELENIUM_GENERIC_COMMANDS:
-            return {"returnCode": Result.KO, "error": "Unsupported Selenium command"}
+            return self._error_result(
+                WebDriverContractError("Unsupported Selenium command: " + str(operation))
+            )
         try:
             value = self._execute_selenium_command(driver, object_step, operation)
             response = {"returnCode": Result.OK}
@@ -735,7 +739,7 @@ class IdeliumSelenium:
         except BaseException as err:
             printer.danger("Idelium Selenium | command failed:" + operation)
             print(err)
-            return {"returnCode": Result.KO}
+            return self._error_result(err)
 
     def _execute_selenium_command(self, driver, object_step, operation):
         """Dispatch a validated generic Selenium WebDriver operation."""
@@ -781,11 +785,25 @@ class IdeliumSelenium:
             return None
         if operation == "get_alert_text":
             return driver.switch_to.alert.text
+        if operation == "switch_frame":
+            frame = self._element_for_generic_command(driver, object_step)
+            driver.switch_to.frame(frame)
+            return None
+        if operation == "switch_default_content":
+            driver.switch_to.default_content()
+            return None
         if operation == "switch_window":
             driver.switch_to.window(object_step["handle"])
             return None
         if operation == "new_window":
             driver.switch_to.new_window(object_step.get("windowType", "tab"))
+            return None
+        if operation == "get_window_handle":
+            return driver.current_window_handle
+        if operation == "get_window_handles":
+            return list(driver.window_handles)
+        if operation == "set_download_behavior":
+            self._set_download_behavior(driver, object_step)
             return None
         if operation == "element_state":
             element = self._element_for_generic_command(driver, object_step)
@@ -801,23 +819,41 @@ class IdeliumSelenium:
             return None
         if operation == "shadow_find_element":
             host = self._element_for_generic_command(driver, object_step)
-            shadow_by = object_step.get(
-                "shadowFindBy", object_step.get("findBy", "css")
+            shadow_locator = build_locator(
+                object_step.get("shadowFindBy", object_step.get("findBy", "css")),
+                object_step["shadowTarget"],
             )
-            shadow_target = object_step["shadowTarget"]
-            host.shadow_root.find_element(SelBy().get_by(shadow_by), shadow_target)
+            host.shadow_root.find_element(*shadow_locator.as_selenium())
             return None
         raise ValueError("Unsupported Selenium command: " + operation)
 
     @staticmethod
+    def _set_download_behavior(driver, object_step):
+        """Configure browser downloads when the platform exposes a safe API."""
+
+        download_path = object_step.get("downloadPath") or object_step.get("path")
+        if not download_path:
+            raise WebDriverContractError("downloadPath is required.")
+        if not hasattr(driver, "execute_cdp_cmd"):
+            raise WebDriverContractError(
+                "Download behavior requires a driver with Chrome DevTools support."
+            )
+        behavior = object_step.get("behavior", "allow")
+        if behavior not in {"allow", "deny"}:
+            raise WebDriverContractError("Download behavior must be allow or deny.")
+        driver.execute_cdp_cmd(
+            "Page.setDownloadBehavior",
+            {
+                "behavior": behavior,
+                "downloadPath": str(Path(download_path).expanduser()),
+            },
+        )
+
+    @staticmethod
     def _element_for_generic_command(driver, object_step):
         """Find the element targeted by a generic Selenium command."""
-        by = SelBy()
-        if "xpath" in object_step:
-            return driver.find_element(by.get_by("XPATH"), object_step["xpath"])
-        return driver.find_element(
-            by.get_by(object_step["findBy"]),
-            object_step["target"],
+        return W3CWebDriverAdapter(driver).find_element(
+            resolve_step_locator(object_step)
         )
 
     def selenium_actions(self, driver, config, object_step):
@@ -874,17 +910,9 @@ class IdeliumSelenium:
     @staticmethod
     def _element_for_action(driver, action, prefix=None):
         """Find an action target element from direct or prefixed locator fields."""
-        by = SelBy()
-
-        def field(name):
-            if prefix is None:
-                return action.get(name)
-            return action.get(prefix + name[0].upper() + name[1:])
-
-        xpath = field("xpath")
-        if xpath:
-            return driver.find_element(by.get_by("XPATH"), xpath)
-        return driver.find_element(by.get_by(field("findBy")), field("target"))
+        return W3CWebDriverAdapter(driver).find_element(
+            resolve_step_locator(action, prefix or "")
+        )
 
     def command(self, command, driver, obj_config, object_step):
         """command"""

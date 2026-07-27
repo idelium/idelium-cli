@@ -22,6 +22,7 @@ from idelium._internal.exitcodes import (
     EXIT_TEST_FAILURE,
 )
 from idelium._internal.pluginapi import normalize_plugin_payload
+from idelium._internal.webdriver_adapter import W3CWebDriverAdapter
 from PIL import Image
 
 
@@ -369,6 +370,7 @@ class IdeliumWs:
                     typeofstep = object_return["type"]
                     step_failed = object_return["step_failed"]
                     bidi_artifacts = config.pop("bidiArtifacts", [])
+                    screenshot_artifacts = []
                     dependency_failed = object_return.get("dependency_failed", False)
                     config["status"] = status
                     config["step_failed"] = step_failed
@@ -391,34 +393,13 @@ class IdeliumWs:
                         elif exit_code == EXIT_SUCCESS:
                             exit_code = EXIT_TEST_FAILURE
                         if object_return["type"] == "seleniumOrAppium":
-                            path = "screenshots/"
-                            file_name = str(id_test) + ".png"
-                            if not os.path.exists(path):
-                                os.makedirs(path)
-                            if config["json_step"]["attachScreenshot"] is True:
-                                wrapper.screen_shot(
-                                    driver, path + file_name, config["ideliumServer"]
-                                )
-                            if config["test"] is False:
-                                file_name_jpg = path + str(id_test) + ".jpg"
-                                with Image.open(path + file_name) as img:
-                                    rgb_im = img.convert("RGB")
-                                    rgb_im.save(file_name_jpg)
-                                    with open(file_name_jpg, "rb") as img_file:
-                                        screenshot_base64 = base64.b64encode(
-                                            img_file.read()
-                                        )
-                                        self.update_step(
-                                            config,
-                                            id_step,
-                                            [
-                                                "data:image/jpg;base64,"
-                                                + str(screenshot_base64)[2:-1]
-                                            ],
-                                        )
-
-                                os.unlink(path + file_name)
-                                os.unlink(file_name_jpg)
+                            screenshot_artifacts = self._capture_failure_screenshot(
+                                wrapper,
+                                driver,
+                                config,
+                                id_test,
+                                id_step,
+                            )
 
                         should_stop = (
                             object_return["type"] == "postman"
@@ -446,6 +427,7 @@ class IdeliumWs:
                             postman_data,
                             step_failed,
                             bidi_artifacts,
+                            screenshot_artifacts,
                         )
                     )
                 else:
@@ -475,7 +457,9 @@ class IdeliumWs:
                     if close_bidi_session is not None:
                         close_bidi_session(config, printer)
                 finally:
-                    driver.quit()
+                    cleanup_result = W3CWebDriverAdapter(driver).quit()
+                    if cleanup_result.error is not None:
+                        printer.danger(cleanup_result.error.message)
                     driver = None
         self._write_execution_reports(report_events, config, exit_code, printer)
         return exit_code
@@ -490,6 +474,7 @@ class IdeliumWs:
         postman_data,
         step_failed,
         artifacts=None,
+        failure_artifacts=None,
     ):
         diagnostics = []
         if status in ("2", "5") and step_failed:
@@ -506,9 +491,73 @@ class IdeliumWs:
             "status": status,
             "durationMilliseconds": duration_ms,
             "diagnostics": diagnostics,
-            "artifacts": artifacts or [],
+            "artifacts": (artifacts or []) + (failure_artifacts or []),
             "postmanResults": postman_data or [],
         }
+
+    @staticmethod
+    def _capture_failure_screenshot(wrapper, driver, config, id_test, id_step):
+        """Capture one bounded failure screenshot artifact when available."""
+
+        if driver is None:
+            return []
+        json_step = config.get("json_step", {})
+        if (
+            json_step.get("attachScreenshot") is not True
+            and config.get("captureFailureScreenshots", True) is not True
+        ):
+            return []
+        screenshot_dir = Path("screenshots")
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = screenshot_dir / (IdeliumWs._safe_artifact_id(id_test) + ".png")
+        printer = config.get("printer")
+        try:
+            wrapper.screen_shot(driver, str(screenshot_path), config["ideliumServer"])
+            if config["test"] is False and id_step is not None:
+                jpg_path = screenshot_path.with_suffix(".jpg")
+                with Image.open(screenshot_path) as img:
+                    rgb_im = img.convert("RGB")
+                    rgb_im.save(jpg_path)
+                with open(jpg_path, "rb") as img_file:
+                    screenshot_base64 = base64.b64encode(img_file.read())
+                IdeliumWs.update_step(
+                    config,
+                    id_step,
+                    ["data:image/jpg;base64," + str(screenshot_base64)[2:-1]],
+                )
+                os.unlink(screenshot_path)
+                os.unlink(jpg_path)
+            size_bytes = (
+                screenshot_path.stat().st_size if screenshot_path.exists() else 0
+            )
+            return [
+                {
+                    "name": "failure-screenshot.png",
+                    "type": "image/png",
+                    "path": str(screenshot_path),
+                    "data": {
+                        "sizeBytes": size_bytes,
+                        "source": "webdriver-failure",
+                    },
+                }
+            ]
+        except BaseException as err:
+            if printer is not None:
+                printer.warning(
+                    "Failure screenshot capture failed without changing the test result."
+                )
+                if config.get("is_debug"):
+                    printer.warning(str(err))
+            return []
+
+    @staticmethod
+    def _safe_artifact_id(value):
+        """Return a filesystem-safe artifact id with no tenant metadata."""
+
+        safe_value = "".join(
+            char for char in str(value) if char.isalnum() or char in {"-", "_"}
+        )
+        return safe_value or "step"
 
     @staticmethod
     def _write_execution_reports(report_events, config, exit_code, printer):
