@@ -321,7 +321,7 @@ def _normalize_step(step: dict[str, Any]) -> dict[str, Any]:
     postman_results = step.get("postmanResults") or []
     diagnostics = list(step.get("diagnostics") or [])
     diagnostics.extend(_postman_diagnostics(postman_results))
-    return {
+    normalized = {
         "id": _safe_string(step.get("id")),
         "name": _safe_string(step.get("name")),
         "type": _safe_string(step.get("type")),
@@ -336,6 +336,9 @@ def _normalize_step(step: dict[str, Any]) -> dict[str, Any]:
         ],
         "postmanResults": [_normalize_postman(result) for result in postman_results],
     }
+    if "trace" in step:
+        normalized["trace"] = _normalize_trace(step["trace"])
+    return normalized
 
 
 def _postman_diagnostics(results: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -389,6 +392,40 @@ def _normalize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
     if "data" in artifact:
         normalized["data"] = _limit_artifact_data(redact_bidi_value(artifact["data"]))
     return normalized
+
+
+def _normalize_trace(trace: Any) -> Any:
+    return _normalize_trace_value(redact_bidi_value(trace))
+
+
+def _normalize_trace_value(value: Any, *, key: str = "") -> Any:
+    if isinstance(value, dict):
+        return {
+            _safe_string(item_key): _normalize_trace_value(
+                item,
+                key=str(item_key),
+            )
+            for item_key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _normalize_trace_value(item, key=key)
+            for item in value[:MAX_ARTIFACT_DATA_LIST_ITEMS]
+        ]
+    if isinstance(value, str):
+        if key == "durationMilliseconds":
+            try:
+                return max(0, int(value))
+            except ValueError:
+                return 0
+        if key.lower() == "url":
+            return _redact_url(value)
+        return _safe_string(value)
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int | float):
+        return value
+    return _safe_string(value)
 
 
 def _normalize_status(status: Any) -> str:

@@ -436,6 +436,12 @@ A named test has `passed` status only when every command passed. It has `failed`
 status when any command failed. Commands after the first fail-fast error are
 `skipped`.
 
+Each command result may include a `performed-step-trace.v1` trace. The trace
+contains step identity, duration, terminal status, redacted page context,
+optional safe locator context, and classified diagnostics. Trace data is
+compatible with the Idelium API `data` field because it remains a bounded,
+JSON-serializable result payload and redaction is applied before serialization.
+
 ### 7.3 Error classes
 
 The runtime preserves these top-level error classes:

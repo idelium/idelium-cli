@@ -62,7 +62,67 @@
         "durationMilliseconds": {"type": "integer", "minimum": 0},
         "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
         "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
-        "postmanResults": {"type": "array", "items": {"$ref": "#/$defs/postmanResult"}}
+        "postmanResults": {"type": "array", "items": {"$ref": "#/$defs/postmanResult"}},
+        "trace": {"$ref": "#/$defs/performedStepTrace"}
+      }
+    },
+    "performedStepTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "identity", "timing", "status", "page", "diagnostics"],
+      "properties": {
+        "schemaVersion": {"const": "performed-step-trace.v1"},
+        "identity": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["kind"],
+          "properties": {
+            "kind": {"type": "string"},
+            "name": {"type": "string"},
+            "span": {"type": "object"}
+          }
+        },
+        "timing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["durationMilliseconds"],
+          "properties": {
+            "durationMilliseconds": {"type": "integer", "minimum": 0}
+          }
+        },
+        "status": {"enum": ["passed", "failed", "skipped"]},
+        "interrupted": {"type": "boolean"},
+        "locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "value"],
+          "properties": {
+            "strategy": {"enum": ["css", "xpath"]},
+            "value": {"type": "string"}
+          }
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "title"],
+          "properties": {
+            "url": {"type": "string"},
+            "title": {"type": "string"}
+          }
+        },
+        "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/traceDiagnostic"}}
+      }
+    },
+    "traceDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "code", "category", "message"],
+      "properties": {
+        "level": {"type": "string"},
+        "code": {"type": "string"},
+        "category": {"enum": ["assertion", "interruption", "locator", "runtime", "timeout", "validation"]},
+        "message": {"type": "string"},
+        "span": {"type": "object"}
       }
     },
     "diagnostic": {

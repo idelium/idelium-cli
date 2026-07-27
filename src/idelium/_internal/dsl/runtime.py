@@ -17,6 +17,7 @@ REDACTED = "[REDACTED]"
 SUPPORTED_SCHEMA_VERSION = "1.0"
 SUPPORTED_LANGUAGE_VERSION = "1.0"
 ASSERTION_CONTRACT_VERSION = "dsl-assertion.v1"
+TRACE_CONTRACT_VERSION = "performed-step-trace.v1"
 DEFAULT_WAIT_TIMEOUT_MILLISECONDS = 5000
 DEFAULT_POLL_INTERVAL_SECONDS = 0.1
 MAX_WAIT_TIMEOUT_MILLISECONDS = 120000
@@ -212,6 +213,15 @@ class DslAstRuntime:
                 started,
                 diagnostics=[error.as_diagnostic()],
             )
+        except NoSuchElementException as error:
+            diagnostic = {
+                "level": "error",
+                "code": "IDELIUM_DSL_RUNTIME_LOCATOR_NOT_FOUND",
+                "message": self._redact_text(str(error)),
+            }
+            if "span" in node:
+                diagnostic["span"] = node["span"]
+            return self._node_result(node, "failed", started, diagnostics=[diagnostic])
         except Exception as error:
             diagnostic = {
                 "level": "error",
@@ -991,14 +1001,22 @@ class DslAstRuntime:
         output: dict[str, Any] | None = None,
         diagnostics: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        duration_ms = max(0, int((self.options.monotonic() - started) * 1000))
+        safe_diagnostics = [
+            self._safe_diagnostic(diagnostic) for diagnostic in (diagnostics or [])
+        ]
         result = {
             "kind": node.get("kind", "unknown"),
             "status": status,
-            "durationMilliseconds": max(
-                0, int((self.options.monotonic() - started) * 1000)
-            ),
-            "diagnostics": diagnostics or [],
+            "durationMilliseconds": duration_ms,
+            "diagnostics": safe_diagnostics,
             "output": output or {},
+            "trace": self._trace_payload(
+                node,
+                status,
+                duration_ms,
+                diagnostics=safe_diagnostics,
+            ),
         }
         if "span" in node:
             result["span"] = node["span"]
@@ -1011,22 +1029,112 @@ class DslAstRuntime:
         code: str = "IDELIUM_DSL_RUNTIME_SKIPPED_AFTER_FAILURE",
         message: str = "Statement skipped because a previous DSL statement failed.",
     ) -> dict[str, Any]:
+        duration_ms = 0
+        diagnostics = [
+            {
+                "level": "warning",
+                "code": code,
+                "message": message,
+            }
+        ]
         result = {
             "kind": node.get("kind", "unknown"),
             "status": "skipped",
-            "durationMilliseconds": 0,
-            "diagnostics": [
-                {
-                    "level": "warning",
-                    "code": code,
-                    "message": message,
-                }
-            ],
+            "durationMilliseconds": duration_ms,
+            "diagnostics": diagnostics,
             "output": {},
+            "trace": self._trace_payload(
+                node,
+                "skipped",
+                duration_ms,
+                diagnostics=diagnostics,
+            ),
         }
         if "span" in node:
             result["span"] = node["span"]
         return result
+
+    def _trace_payload(
+        self,
+        node: dict[str, Any],
+        status: str,
+        duration_ms: int,
+        *,
+        diagnostics: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        trace = {
+            "schemaVersion": TRACE_CONTRACT_VERSION,
+            "identity": self._trace_identity(node),
+            "timing": {"durationMilliseconds": duration_ms},
+            "status": status,
+            "page": self._safe_page_context(),
+            "diagnostics": [
+                self._trace_diagnostic(diagnostic) for diagnostic in diagnostics
+            ],
+        }
+        if "locator" in node:
+            trace["locator"] = self._safe_locator(node["locator"])
+        if status == "skipped":
+            trace["interrupted"] = True
+        return trace
+
+    def _trace_identity(self, node: dict[str, Any]) -> dict[str, Any]:
+        identity = {"kind": self._redact_text(str(node.get("kind", "unknown")))}
+        if "name" in node:
+            identity["name"] = self._redact_text(str(node["name"]))
+        if "span" in node:
+            identity["span"] = node["span"]
+        return identity
+
+    def _safe_page_context(self) -> dict[str, str]:
+        return {
+            "url": self._safe_driver_attribute("current_url", redact_url=True),
+            "title": self._safe_driver_attribute("title", redact_url=False),
+        }
+
+    def _safe_driver_attribute(self, name: str, *, redact_url: bool) -> str:
+        try:
+            value = getattr(self.driver, name, "")
+        except Exception:
+            return ""
+        if value is None:
+            return ""
+        text = str(value)
+        return self._redact_url(text) if redact_url else self._redact_text(text)
+
+    def _safe_diagnostic(self, diagnostic: dict[str, Any]) -> dict[str, Any]:
+        safe = dict(diagnostic)
+        if "message" in safe:
+            safe["message"] = self._redact_text(str(safe["message"]))
+        if "remediation" in safe:
+            safe["remediation"] = self._redact_text(str(safe["remediation"]))
+        if "data" in safe:
+            safe["data"] = self._redact_value(safe["data"])
+        return safe
+
+    def _trace_diagnostic(self, diagnostic: dict[str, Any]) -> dict[str, Any]:
+        code = str(diagnostic.get("code") or "IDELIUM_DSL_RUNTIME_DIAGNOSTIC")
+        trace_diagnostic = {
+            "level": self._redact_text(str(diagnostic.get("level") or "error")),
+            "code": self._redact_text(code),
+            "category": _diagnostic_category(code),
+            "message": self._redact_text(str(diagnostic.get("message") or "")),
+        }
+        if "span" in diagnostic:
+            trace_diagnostic["span"] = diagnostic["span"]
+        return trace_diagnostic
+
+    def _redact_value(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                self._redact_text(str(key)): self._redact_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._redact_value(item) for item in value]
+        if isinstance(value, str):
+            return self._redact_text(value)
+        return value
 
 
 def execute_ast(
@@ -1082,6 +1190,21 @@ def _compare_count(actual: int, expected: int, operator: str) -> bool:
     if operator == "at_most":
         return actual <= expected
     return False
+
+
+def _diagnostic_category(code: str) -> str:
+    normalized = code.upper()
+    if "ASSERTION" in normalized:
+        return "assertion"
+    if "LOCATOR" in normalized or "NO_SUCH_ELEMENT" in normalized:
+        return "locator"
+    if "TIMEOUT" in normalized:
+        return "timeout"
+    if "SKIPPED" in normalized:
+        return "interruption"
+    if "UNSUPPORTED" in normalized or "INVALID" in normalized or "UNKNOWN" in normalized:
+        return "validation"
+    return "runtime"
 
 
 _SENSITIVE_PATTERN = re.compile(

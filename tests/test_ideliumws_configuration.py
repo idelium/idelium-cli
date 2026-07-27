@@ -102,6 +102,56 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             start.call_args_list[1].args[2],
         )
 
+    def test_step_creation_accepts_versioned_performed_trace_in_data_contract(self):
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+        }
+        performed_result = {
+            "schemaVersion": "performed-step-result.v1",
+            "trace": {
+                "schemaVersion": "performed-step-trace.v1",
+                "identity": {"kind": "click"},
+                "timing": {"durationMilliseconds": 7},
+                "status": "failed",
+                "locator": {"strategy": "css", "value": "#login"},
+                "page": {"url": "https://example.invalid/login", "title": "Login"},
+                "diagnostics": [
+                    {
+                        "level": "error",
+                        "code": "IDELIUM_DSL_RUNTIME_LOCATOR_NOT_FOUND",
+                        "category": "locator",
+                        "message": "Element was not found.",
+                    }
+                ],
+            },
+        }
+
+        with patch("idelium._internal.ideliumws.Connection.start") as start:
+            start.return_value = {"idStep": 93}
+
+            IdeliumWs.create_step(
+                config,
+                id_cycle=77,
+                id_test=91,
+                id_step=16,
+                name="click login",
+                status="2",
+                data=performed_result,
+                typeofstep="seleniumOrAppium",
+            )
+
+        payload = start.call_args.args[2]
+        serialized_data = json.loads(payload["data"])
+        self.assertEqual("performed-step-result.v1", serialized_data["schemaVersion"])
+        self.assertEqual(
+            "performed-step-trace.v1",
+            serialized_data["trace"]["schemaVersion"],
+        )
+        self.assertEqual(2, payload["status"])
+
     def test_test_mode_does_not_create_or_update_remote_results(self):
         web_service = IdeliumWs()
         printer = Mock()

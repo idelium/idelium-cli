@@ -503,6 +503,39 @@ test "Runtime smoke" {
         self.assertNotIn("different-secret", serialized)
         self.assertIn("[REDACTED]", serialized)
 
+    def test_runtime_results_include_versioned_step_traces(self):
+        ast = parse_source(
+            'idelium 1.0\n\ntest "Trace" {\n'
+            '    secret token = "trace-secret"\n'
+            '    open "https://example.invalid/dashboard?token=${token}"\n'
+            '    click css "#missing-${token}"\n'
+            '    click css "#after"\n'
+            "}\n"
+        )
+        driver = FakeDriver()
+        driver.current_url = "https://example.invalid/page?session=trace-secret"
+        driver.title = "Secret trace-secret page"
+
+        result = execute_ast(ast, driver)
+        statements = result["tests"][0]["statements"]
+        open_trace = statements[1]["trace"]
+        failed_trace = statements[2]["trace"]
+        skipped_trace = statements[3]["trace"]
+        serialized = repr(result)
+
+        self.assertEqual("performed-step-trace.v1", open_trace["schemaVersion"])
+        self.assertEqual("open", open_trace["identity"]["kind"])
+        self.assertEqual("failed", failed_trace["status"])
+        self.assertEqual("locator", failed_trace["diagnostics"][0]["category"])
+        self.assertEqual("skipped", skipped_trace["status"])
+        self.assertTrue(skipped_trace["interrupted"])
+        self.assertEqual(
+            "interruption",
+            skipped_trace["diagnostics"][0]["category"],
+        )
+        self.assertNotIn("trace-secret", serialized)
+        self.assertIn("[REDACTED]", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()

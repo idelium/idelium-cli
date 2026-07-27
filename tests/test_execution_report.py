@@ -65,6 +65,24 @@ class ExecutionReportTest(unittest.TestCase):
                                 ],
                             }
                         ],
+                        "trace": {
+                            "schemaVersion": "performed-step-trace.v1",
+                            "identity": {"kind": "postman_collection"},
+                            "timing": {"durationMilliseconds": 123},
+                            "status": "failed",
+                            "page": {
+                                "url": "https://example.invalid/page?session=secret",
+                                "title": "token abc dashboard",
+                            },
+                            "diagnostics": [
+                                {
+                                    "level": "error",
+                                    "code": "IDELIUM_POSTMAN_ASSERTION_FAILED",
+                                    "category": "assertion",
+                                    "message": "password hunter2 failed",
+                                }
+                            ],
+                        },
                     }
                 ],
             }
@@ -89,6 +107,11 @@ class ExecutionReportTest(unittest.TestCase):
         self.assertNotIn("hunter2", serialized)
         self.assertNotIn("abc", serialized)
         self.assertIn("token=[REDACTED]", serialized)
+        self.assertIn("session=[REDACTED]", serialized)
+        self.assertEqual(
+            "performed-step-trace.v1",
+            report["tests"][0]["steps"][0]["trace"]["schemaVersion"],
+        )
         self.assertEqual("failed", report["run"]["status"])
         self.assertEqual(1, report["summary"]["failed"])
 

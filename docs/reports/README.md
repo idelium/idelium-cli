@@ -12,12 +12,19 @@ are provided, every file is generated from the same canonical report.
 The JSON format is versioned by `schemaVersion` and validated by
 [execution-report.schema.json](execution-report.schema.json). The report
 contains run metadata, summary counts, test entries, step timeline entries,
-diagnostics, artifacts, and Postman request results when available.
+diagnostics, artifacts, optional performed-step traces, and Postman request
+results when available.
+
+Performed-step traces use `schemaVersion: "performed-step-trace.v1"`. Each trace
+records stable step identity, terminal status, duration, redacted page context,
+optional safe locator context, and classified diagnostics. The trace is optional
+for compatibility with older Idelium API results, but when present it is
+validated by the same JSON schema as the rest of the local execution report.
 
 HTML, Markdown, and JUnit reports escape untrusted content and are rendered from
 the same redacted canonical data used for JSON export. Sensitive terms in
 diagnostic fields and sensitive URL query values are redacted before
-serialization.
+serialization, including inside performed-step traces.
 
 Artifacts always include `name`, `type`, and `path`. They may also include a
 bounded structured `data` payload for execution diagnostics such as BiDi console
