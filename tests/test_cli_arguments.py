@@ -181,6 +181,28 @@ class CliArgumentParsingTest(unittest.TestCase):
             printer.danger.call_args.args[0],
         )
 
+    def test_accepts_dsl_lint_mode_without_api_credentials(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--dslLint",
+                "tests/login.idelium",
+                "--dslLintReport",
+                "reports/login.lint.json",
+            ],
+            Mock(),
+            printer,
+        )
+
+        self.assertEqual("tests/login.idelium", defined["cl_params"]["dslLint"])
+        self.assertEqual(
+            "reports/login.lint.json",
+            defined["cl_params"]["dslLintReport"],
+        )
+
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
         printer = Mock()

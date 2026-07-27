@@ -487,6 +487,22 @@ Diagnostics must not include passwords, API keys, authorization headers,
 cookies, session identifiers, or complete sensitive text values. A diagnostic
 may identify the field or source span without repeating its literal content.
 
+### 8.1 Lint diagnostics
+
+The DSL linter runs without network, browser, API, or plugin access. Lint output
+uses `dsl-lint-result.v1` and stable `ruleId` values. Each diagnostic has:
+
+- `ruleId`;
+- `severity`, either `warning` or `error`;
+- English `message`;
+- optional source `span`;
+- optional remediation.
+
+Warnings do not fail CI by default and return exit code `0`. Syntax errors and
+lint errors return exit code `2`. Current rules include syntax validation,
+undefined reusable-step calls, insecure `http://` navigation, and waits that rely
+on implicit runtime timeouts.
+
 Recommended code ranges are:
 
 | Range | Purpose |

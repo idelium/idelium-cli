@@ -153,6 +153,8 @@ flag.
 | `--dslParamsFile=<path>` | Load DSL variables/secrets from JSON | disabled |
 | `--dslParam=<name=value>` | Add or override a non-secret DSL parameter | repeatable |
 | `--dslSecret=<name=value>` | Add or override a secret DSL parameter | repeatable |
+| `--dslLint=<path>` | Lint this DSL source without network access | disabled |
+| `--dslLintReport=<path>` | Write a JSON DSL lint report | disabled |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
 
@@ -279,6 +281,16 @@ idelium --dslSource=tests/login.idelium \
 Parameter names use DSL identifier rules. Values must be strings. Secret
 parameters are marked for runtime redaction and should not be printed or stored
 in reports.
+
+Lint DSL sources in CI without contacting the Idelium API:
+
+```bash
+idelium --dslLint=docs/dsl/v1/examples/minimal.idelium \
+  --dslLintReport=reports/minimal.lint.json
+```
+
+The lint report uses `schemaVersion: "dsl-lint-result.v1"`. Warnings return exit
+code `0`; syntax errors or lint errors return exit code `2`.
 
 ## Selenium execution
 

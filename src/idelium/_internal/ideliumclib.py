@@ -60,6 +60,8 @@ class InitIdelium:
     --dslParamsFile         JSON file with DSL variables and secrets
     --dslParam              DSL runtime parameter in name=value form
     --dslSecret             DSL runtime secret parameter in name=value form
+    --dslLint               lint this DSL source file without network access
+    --dslLintReport         write a JSON DSL lint report to this path
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -146,6 +148,8 @@ class InitIdelium:
             "dslParam": [],
             "dslSecret": [],
             "dslParameters": None,
+            "dslLint": None,
+            "dslLintReport": None,
             "count": 0,
             "ideliumKey": None,
             "forcedownload": False,
@@ -223,6 +227,13 @@ class InitIdelium:
         ast_export_requested = (
             cl_params["dslSource"] is not None or cl_params["astReport"] is not None
         )
+        lint_requested = (
+            cl_params["dslLint"] is not None or cl_params["dslLintReport"] is not None
+        )
+        if ast_export_requested and lint_requested:
+            print(self.get_syntax())
+            printer.danger("DSL AST export and DSL lint modes cannot be combined")
+            sys.exit(1)
         if ast_export_requested:
             if cl_params["dslSource"] is None or cl_params["astReport"] is None:
                 print(self.get_syntax())
@@ -230,6 +241,15 @@ class InitIdelium:
                 sys.exit(1)
             self.configure_http(cl_params, printer)
             self.configure_dsl_parameters(cl_params, printer)
+            return {
+                "cl_params": cl_params,
+            }
+        if lint_requested:
+            if cl_params["dslLint"] is None:
+                print(self.get_syntax())
+                printer.danger("dslLint is required when dslLintReport is set")
+                sys.exit(1)
+            self.configure_http(cl_params, printer)
             return {
                 "cl_params": cl_params,
             }
