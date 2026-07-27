@@ -86,3 +86,21 @@ runs where safe. If test execution fails or is cancelled, teardown still runs.
 Teardown failures fail the lifecycle only when no earlier setup or test failure
 already determined the result. Hook diagnostics are redacted before they are
 stored or reported.
+
+## Worker and session health
+
+Health monitor results are versioned as `idelium-health-monitor.v1` and are
+classified with `category: "health"` so they remain separate from test assertion
+results. Health checks cover:
+
+- startup readiness before scheduling work;
+- mid-run driver or remote-session loss;
+- timeout boundaries for worker responsiveness;
+- recovery of a previously quarantined resource.
+
+Unhealthy workers, drivers, and remote sessions are quarantined before more work
+is scheduled on them. When a driver is available, cleanup is attempted through
+the WebDriver adapter and the cleanup outcome is reported as `passed`, `failed`,
+or `not-required`. Health diagnostics are redacted before serialization and must
+not expose session identifiers, cookies, tokens, credentials, or raw remote
+endpoints.
