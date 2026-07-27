@@ -46,3 +46,19 @@ Every concurrent path must isolate:
 
 No worker may share mutable credentials, sessions, temporary directories, or
 artifact write paths with another worker.
+
+## Runtime isolation context
+
+The runtime isolation contract is versioned as `idelium-runtime-isolation.v1`.
+Each worker owns:
+
+- a copied execution configuration;
+- a private temporary directory;
+- a private artifact directory;
+- independent driver, Postman, diagnostic, and artifact result state;
+- deterministic cleanup after success, failure, or cancellation.
+
+Temporary paths use generic worker prefixes and must not contain tenant names,
+credential names, credential values, cookies, or API tokens. Reportable metadata
+contains only the isolation contract version, tenant identifier, worker
+identifier, private paths, and cleanup errors.
