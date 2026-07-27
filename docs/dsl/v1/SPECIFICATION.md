@@ -21,19 +21,21 @@ DSL v1.0 supports:
 
 - an explicit language-version declaration;
 - one or more named tests;
+- typed string variables and deterministic string interpolation;
+- reusable step definitions and invocation with parameters;
 - page navigation;
 - CSS and XPath element locators;
 - clicking and entering text;
 - explicit element waits;
-- visibility and text assertions;
+- visibility, text, value, collection-count, URL, and title assertions;
+- validated `if` blocks and bounded `repeat` loops;
 - browser back and forward navigation;
 - named screenshots;
 - comments and optional statement terminators.
 
-Variables, interpolation, conditional blocks, loops, reusable steps, external
-parameters, and user-defined functions are reserved for later backward-compatible
-DSL v1 revisions. A v1.0 implementation must not interpret unknown syntax as a
-plugin or arbitrary runtime command.
+External functions and arbitrary runtime commands are reserved for later
+backward-compatible DSL v1 revisions. A v1.0 implementation must not interpret
+unknown syntax as a plugin or arbitrary runtime command.
 
 ## 3. Source format
 
@@ -76,6 +78,58 @@ A duration is a positive integer followed immediately by:
 Examples are `250ms`, `10s`, and `2m`. Zero, negative, fractional, or unitless
 durations are invalid. Implementations must apply their documented upper bound
 before execution.
+
+### 3.3 Variables and interpolation
+
+Variables are string values declared inside a test:
+
+```text
+let baseUrl = "https://example.invalid"
+secret password = "correct-horse-battery-staple"
+```
+
+`let` declares a normal string variable. `secret` declares a string variable
+whose value may be used during execution but must be redacted from normal
+diagnostics and command results. Variable names must start with an ASCII letter
+or `_` and may then contain ASCII letters, digits, or `_`.
+
+Interpolation uses `${name}` inside supported command strings:
+
+```text
+open "${baseUrl}/login"
+write css "#password" value "${password}"
+```
+
+Scope is per test. Variables declared in one test are not visible to another
+test. Runtime-provided variables may seed a test, but declarations inside the
+test take precedence from the declaration point onward. Referencing a missing
+variable is a runtime validation failure and must not echo the variable name as
+a sensitive value.
+
+### 3.4 Reusable steps
+
+Reusable steps are declared at document level before or between tests:
+
+```text
+step login(email, password) {
+    write css "#email" value "${email}"
+    write css "#password" value "${password}"
+    click css "button[type='submit']"
+}
+```
+
+Tests invoke them with `use`:
+
+```text
+use login("user@example.invalid", "${password}")
+```
+
+Definition names and parameter names use the same identifier rules as
+variables. Invocation arguments are strings and may use interpolation. Parameter
+bindings are scoped to the reusable-step invocation and do not leak into the
+caller after the call completes. If an invocation argument references a `secret`
+variable, the corresponding parameter is treated as secret for the duration of
+the invocation.
 
 ## 4. Grammar
 
@@ -126,6 +180,20 @@ must be represented by classified runtime diagnostics.
 Commands execute in source order. Unless stated otherwise, a failed command
 stops the current test and later commands in that test are marked as skipped.
 The next named test may run according to the enclosing suite policy.
+
+Variable declarations are executable statements. They update the test-local
+scope and succeed without browser interaction.
+
+Control blocks are executable statements with nested statement results. A
+failure inside a block fails the enclosing control statement and stops the
+current test. A false `if` condition skips its nested statements without failing
+the test. `repeat` loops must be bounded by the runtime before executing any
+nested statement.
+
+Reusable-step invocations are executable statements with nested statement
+results. The runtime must validate arity before dispatching nested statements.
+Recursive or mutually recursive invocations must fail when the configured
+expansion limit is reached.
 
 ### 6.1 Open a page
 
@@ -208,7 +276,59 @@ Comparisons are case-sensitive and do not trim or normalize whitespace. Expected
 and actual values may be sensitive and must be redacted according to execution
 policy.
 
-### 6.7 Navigate back or forward
+### 6.7 Assert element value
+
+```text
+assert value css "#email" equals "user@example.invalid"
+assert value css "#token" contains "prefix"
+```
+
+Value assertions read the selected element's `value` attribute. Supported
+comparisons are `equals` and `contains`. Sensitive expected or actual values
+must be redacted in runtime results and diagnostics.
+
+### 6.8 Assert collection count
+
+```text
+assert count css ".row" equals 3
+assert count css ".result" at_least 1
+```
+
+Count assertions evaluate the number of elements matching the locator. Supported
+comparisons are `equals`, `greater_than`, `less_than`, `at_least`, and
+`at_most`. Expected counts are non-negative integers.
+
+### 6.9 Assert runtime state
+
+```text
+assert url contains "/dashboard"
+assert title equals "Dashboard"
+```
+
+Runtime assertions read browser state without a locator. The supported targets
+are `url` and `title`; supported comparisons are `equals` and `contains`.
+
+### 6.10 Assertion result contract
+
+Assertion command output and assertion-failure diagnostics use the
+`dsl-assertion.v1` payload:
+
+```json
+{
+  "contractVersion": "dsl-assertion.v1",
+  "kind": "text",
+  "target": "text",
+  "operator": "contains",
+  "expected": "Dashboard",
+  "actual": "Dashboard - Production"
+}
+```
+
+Assertion failures use `IDELIUM_DSL_RUNTIME_ASSERTION_FAILED`, keeping
+assertion mismatches distinct from execution errors such as locator, timeout,
+session, or network failures.
+
+### 6.11 Navigate back or forward
 
 ```text
 back
@@ -218,7 +338,38 @@ forward
 `back` and `forward` invoke the corresponding WebDriver history operation in the
 active browser context. They do not imply a page-readiness wait.
 
-### 6.8 Capture a screenshot
+### 6.12 Conditional blocks
+
+```text
+if visible css "#dashboard" {
+    click css "#refresh"
+}
+
+if hidden xpath "//dialog" {
+    screenshot "dialog-hidden"
+}
+```
+
+`if` supports `visible` and `hidden` conditions using the same visibility
+semantics as assertions. When the condition is true, nested statements run in
+order. When the condition is false, nested statements are marked skipped and the
+`if` statement passes.
+
+### 6.13 Bounded loops
+
+```text
+repeat 3 times {
+    click css ".retry"
+}
+```
+
+`repeat` executes its nested statements a fixed positive number of times. The
+runtime must enforce a documented maximum iteration count before dispatching the
+first nested statement. If any nested statement fails, the current iteration
+fails, remaining iterations are skipped, and the enclosing `repeat` statement
+fails.
+
+### 6.14 Capture a screenshot
 
 ```text
 screenshot "dashboard-loaded"
@@ -231,6 +382,18 @@ extension and collision-safe execution identifier.
 Screenshot storage, size, retention, and retrieval follow the configured
 artifact policy. A screenshot failure is reported without replacing the
 original failure that triggered it.
+
+### 6.15 Invoke a reusable step
+
+```text
+use login("user@example.invalid", "${password}")
+```
+
+`use` expands a document-level reusable step by name. Argument count must match
+the reusable-step parameter list exactly. Expansion is deterministic and bounded;
+implementations must fail safely when the configured expansion limit is reached.
+Parameters and variables declared inside the reusable step are isolated from the
+caller.
 
 ## 7. Execution semantics
 

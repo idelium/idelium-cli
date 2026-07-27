@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 SUPPORTED_LANGUAGE_VERSION = "1.0"
 SCHEMA_VERSION = "1.0"
 _SCREENSHOT_NAME_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9._-]+$")
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SENSITIVE_SELECTOR_HINTS = ("password", "passwd", "pwd", "secret", "token", "key")
 
 
@@ -68,9 +69,24 @@ class _Parser:
         )
         self._skip_spacing()
 
+        reusable_steps: list[dict[str, Any]] = []
+        reusable_step_names: set[str] = set()
         tests: list[dict[str, Any]] = []
         test_names: set[str] = set()
         while not self._at_end():
+            if self._starts_with_keyword("step"):
+                reusable_step = self._parse_reusable_step()
+                if reusable_step["name"] in reusable_step_names:
+                    self._fail(
+                        "IDELIUM_DSL_DUPLICATE_STEP",
+                        reusable_step["span"]["start"],
+                        "Duplicate reusable step name.",
+                        "Use a unique name for each reusable step definition.",
+                    )
+                reusable_step_names.add(reusable_step["name"])
+                reusable_steps.append(reusable_step)
+                self._skip_spacing()
+                continue
             test_node = self._parse_test()
             if test_node["name"] in test_names:
                 self._fail(
@@ -96,9 +112,42 @@ class _Parser:
             "languageVersion": SUPPORTED_LANGUAGE_VERSION,
             "tests": tests,
         }
+        if reusable_steps:
+            document["steps"] = reusable_steps
         if self.source_name:
             document["sourceName"] = self.source_name
         return document
+
+    def _parse_reusable_step(self) -> dict[str, Any]:
+        start = self.index
+        self._expect_keyword(
+            "step",
+            "IDELIUM_DSL_EXPECTED_STEP",
+            "Declare reusable automation with step name(params) { ... }.",
+        )
+        self._require_horizontal_spacing("Add a reusable step name after step.")
+        name = self._parse_identifier()
+        parameters = self._parse_parameter_list()
+        self._skip_spacing()
+        self._expect_char(
+            "{",
+            "IDELIUM_DSL_EXPECTED_STEP_BODY",
+            "Open the reusable step body with {.",
+        )
+        self._skip_spacing()
+        statements = self._parse_statement_block()
+        self._expect_char(
+            "}",
+            "IDELIUM_DSL_EXPECTED_STEP_END",
+            "Close the reusable step body with }.",
+        )
+        return {
+            "kind": "reusableStep",
+            "name": name,
+            "parameters": parameters,
+            "statements": statements,
+            "span": self._span(start, self.index),
+        }
 
     def _parse_version_declaration(self) -> None:
         self._expect_keyword(
@@ -148,17 +197,7 @@ class _Parser:
         )
         self._skip_spacing()
 
-        statements: list[dict[str, Any]] = []
-        while not self._at_end() and self._current_char() != "}":
-            statements.append(self._parse_statement())
-            self._skip_spacing_without_newline()
-            if self._current_char() == "}":
-                break
-            self._require_separator(
-                "Separate statements with a newline or semicolon."
-            )
-            self._skip_spacing()
-
+        statements = self._parse_statement_block()
         self._expect_char(
             "}",
             "IDELIUM_DSL_EXPECTED_TEST_END",
@@ -174,11 +213,20 @@ class _Parser:
     def _parse_statement(self) -> dict[str, Any]:
         start = self.index
         keyword = self._read_keyword()
+        if keyword in {"let", "secret"}:
+            return self._parse_variable(start, secret=keyword == "secret")
+        if keyword == "use":
+            return self._parse_call(start)
+        if keyword == "if":
+            return self._parse_if(start)
+        if keyword == "repeat":
+            return self._parse_repeat(start)
         if keyword == "open":
             literal = self._parse_string_after_required_spacing(
                 "Add a URL string after open."
             )
-            self._validate_open_url(literal.value, literal.start)
+            if not _contains_interpolation(literal.value):
+                self._validate_open_url(literal.value, literal.start)
             return {"kind": "open", "url": literal.value, "span": self._span(start)}
         if keyword == "click":
             return {
@@ -260,15 +308,205 @@ class _Parser:
             "IDELIUM_DSL_UNKNOWN_STATEMENT",
             start,
             "Unknown DSL statement.",
-            "Use one of: open, click, write, wait, assert, back, forward, screenshot.",
+            "Use one of: let, secret, use, if, repeat, open, click, write, wait, assert, back, forward, screenshot.",
         )
+
+    def _parse_call(self, start: int) -> dict[str, Any]:
+        self._require_horizontal_spacing("Add a reusable step name after use.")
+        name = self._parse_identifier()
+        arguments = self._parse_argument_list()
+        return {
+            "kind": "call",
+            "name": name,
+            "arguments": arguments,
+            "span": self._span(start),
+        }
+
+    def _parse_statement_block(self) -> list[dict[str, Any]]:
+        statements: list[dict[str, Any]] = []
+        while not self._at_end() and self._current_char() != "}":
+            statements.append(self._parse_statement())
+            self._skip_spacing_without_newline()
+            if self._current_char() == "}":
+                break
+            self._require_separator(
+                "Separate statements with a newline or semicolon."
+            )
+            self._skip_spacing()
+        return statements
+
+    def _parse_if(self, start: int) -> dict[str, Any]:
+        self._require_horizontal_spacing("Add an if condition after if.")
+        condition = self._expect_one_of(
+            {"visible", "hidden"},
+            "IDELIUM_DSL_EXPECTED_IF_CONDITION",
+            "Use if visible or if hidden followed by a locator block.",
+        )
+        locator = self._parse_locator()
+        self._skip_spacing()
+        self._expect_char(
+            "{",
+            "IDELIUM_DSL_EXPECTED_BLOCK",
+            "Open the if block with {.",
+        )
+        self._skip_spacing()
+        statements = self._parse_statement_block()
+        self._expect_char(
+            "}",
+            "IDELIUM_DSL_EXPECTED_BLOCK_END",
+            "Close the if block with }.",
+        )
+        return {
+            "kind": "if",
+            "condition": condition,
+            "locator": locator,
+            "statements": statements,
+            "span": self._span(start),
+        }
+
+    def _parse_repeat(self, start: int) -> dict[str, Any]:
+        self._require_horizontal_spacing("Add a positive iteration count after repeat.")
+        count_start = self.index
+        while self._current_char().isdigit():
+            self.index += 1
+        count = self.source[count_start : self.index]
+        if not count or count.startswith("0"):
+            self._fail_at_index(
+                "IDELIUM_DSL_INVALID_REPEAT_COUNT",
+                count_start,
+                "Invalid repeat count.",
+                "Use a positive integer repeat count such as repeat 3 times { ... }.",
+            )
+        self._require_horizontal_spacing("Add times after the repeat count.")
+        self._expect_keyword(
+            "times",
+            "IDELIUM_DSL_EXPECTED_REPEAT_TIMES",
+            "Use repeat <count> times { ... }.",
+        )
+        self._skip_spacing()
+        self._expect_char(
+            "{",
+            "IDELIUM_DSL_EXPECTED_BLOCK",
+            "Open the repeat block with {.",
+        )
+        self._skip_spacing()
+        statements = self._parse_statement_block()
+        self._expect_char(
+            "}",
+            "IDELIUM_DSL_EXPECTED_BLOCK_END",
+            "Close the repeat block with }.",
+        )
+        return {
+            "kind": "repeat",
+            "count": int(count),
+            "statements": statements,
+            "span": self._span(start),
+        }
+
+    def _parse_variable(self, start: int, *, secret: bool) -> dict[str, Any]:
+        self._require_horizontal_spacing("Add a variable name after let or secret.")
+        name_start = self.index
+        name = self._parse_identifier()
+        if not _IDENTIFIER_RE.fullmatch(name):
+            self._fail_at_index(
+                "IDELIUM_DSL_INVALID_VARIABLE_NAME",
+                name_start,
+                "Invalid variable name.",
+                "Use a name that starts with a letter or underscore and contains only letters, numbers, or underscore.",
+            )
+        self._skip_spacing_without_newline()
+        self._expect_char(
+            "=",
+            "IDELIUM_DSL_EXPECTED_VARIABLE_VALUE",
+            'Assign a string value, for example: let baseUrl = "https://example.invalid".',
+        )
+        literal = self._parse_string_after_required_spacing(
+            "Add a string value after =."
+        )
+        return {
+            "kind": "variable",
+            "name": name,
+            "value": literal.value,
+            "secret": secret,
+            "span": self._span(start),
+        }
+
+    def _parse_identifier(self) -> str:
+        start = self.index
+        if not (
+            self._current_char().isalpha()
+            or self._current_char() == "_"
+        ):
+            self._fail_at_current(
+                "IDELIUM_DSL_INVALID_VARIABLE_NAME",
+                "Invalid variable name.",
+                "Use a name that starts with a letter or underscore and contains only letters, numbers, or underscore.",
+            )
+        while self._current_char().isalnum() or self._current_char() == "_":
+            self.index += 1
+        return self.source[start : self.index]
+
+    def _parse_parameter_list(self) -> list[str]:
+        self._skip_spacing_without_newline()
+        self._expect_char(
+            "(",
+            "IDELIUM_DSL_EXPECTED_PARAMETER_LIST",
+            "Add a parameter list after the reusable step name, for example step login(email) { ... }.",
+        )
+        self._skip_spacing_without_newline()
+        parameters: list[str] = []
+        if self._current_char() != ")":
+            while True:
+                parameter = self._parse_identifier()
+                if parameter in parameters:
+                    self._fail_at_current(
+                        "IDELIUM_DSL_DUPLICATE_PARAMETER",
+                        "Duplicate reusable step parameter.",
+                        "Use each parameter name only once.",
+                    )
+                parameters.append(parameter)
+                self._skip_spacing_without_newline()
+                if self._current_char() != ",":
+                    break
+                self.index += 1
+                self._skip_spacing_without_newline()
+        self._expect_char(
+            ")",
+            "IDELIUM_DSL_EXPECTED_PARAMETER_LIST_END",
+            "Close the parameter list with ).",
+        )
+        return parameters
+
+    def _parse_argument_list(self) -> list[str]:
+        self._skip_spacing_without_newline()
+        self._expect_char(
+            "(",
+            "IDELIUM_DSL_EXPECTED_ARGUMENT_LIST",
+            'Pass string arguments, for example use login("user@example.invalid").',
+        )
+        self._skip_spacing_without_newline()
+        arguments: list[str] = []
+        if self._current_char() != ")":
+            while True:
+                arguments.append(self._parse_string().value)
+                self._skip_spacing_without_newline()
+                if self._current_char() != ",":
+                    break
+                self.index += 1
+                self._skip_spacing_without_newline()
+        self._expect_char(
+            ")",
+            "IDELIUM_DSL_EXPECTED_ARGUMENT_LIST_END",
+            "Close the argument list with ).",
+        )
+        return arguments
 
     def _parse_assert(self, start: int) -> dict[str, Any]:
         self._require_horizontal_spacing("Add an assertion kind after assert.")
         assertion = self._expect_one_of(
-            {"visible", "hidden", "text"},
+            {"visible", "hidden", "text", "value", "count", "url", "title"},
             "IDELIUM_DSL_EXPECTED_ASSERTION",
-            "Use assert visible, assert hidden, or assert text.",
+            "Use assert visible, assert hidden, assert text, assert value, assert count, assert url, or assert title.",
         )
         if assertion in {"visible", "hidden"}:
             return {
@@ -277,14 +515,59 @@ class _Parser:
                 "locator": self._parse_locator(),
                 "span": self._span(start),
             }
+        if assertion in {"url", "title"}:
+            self._require_horizontal_spacing("Add a runtime comparison after the target.")
+            comparison = self._parse_text_comparison()
+            literal = self._parse_string_after_required_spacing(
+                "Add the expected string after the comparison."
+            )
+            return {
+                "kind": "assertRuntime",
+                "target": assertion,
+                "comparison": comparison,
+                "expected": literal.value,
+                "sensitive": False,
+                "span": self._span(start),
+            }
+        if assertion == "count":
+            locator = self._parse_locator()
+            self._require_horizontal_spacing("Add a count comparison after the locator.")
+            comparison = self._expect_one_of(
+                {"equals", "greater_than", "less_than", "at_least", "at_most"},
+                "IDELIUM_DSL_EXPECTED_COUNT_COMPARISON",
+                "Use equals, greater_than, less_than, at_least, or at_most.",
+            )
+            self._require_horizontal_spacing("Add the expected count.")
+            expected = self._parse_non_negative_integer(
+                "IDELIUM_DSL_INVALID_COUNT",
+                "Expected count must be a non-negative integer.",
+            )
+            return {
+                "kind": "assertCount",
+                "locator": locator,
+                "comparison": comparison,
+                "expected": expected,
+                "span": self._span(start),
+            }
+        if assertion == "value":
+            locator = self._parse_locator()
+            self._require_horizontal_spacing("Add a value comparison after the locator.")
+            comparison = self._parse_text_comparison()
+            literal = self._parse_string_after_required_spacing(
+                "Add the expected value string after the comparison."
+            )
+            return {
+                "kind": "assertValue",
+                "locator": locator,
+                "comparison": comparison,
+                "expected": literal.value,
+                "sensitive": self._is_sensitive(locator),
+                "span": self._span(start),
+            }
 
         locator = self._parse_locator()
         self._require_horizontal_spacing("Add a text comparison after the locator.")
-        comparison = self._expect_one_of(
-            {"equals", "contains"},
-            "IDELIUM_DSL_EXPECTED_TEXT_COMPARISON",
-            "Use equals or contains for text assertions.",
-        )
+        comparison = self._parse_text_comparison()
         literal = self._parse_string_after_required_spacing(
             "Add the expected text string after the comparison."
         )
@@ -296,6 +579,13 @@ class _Parser:
             "sensitive": self._is_sensitive(locator),
             "span": self._span(start),
         }
+
+    def _parse_text_comparison(self) -> str:
+        return self._expect_one_of(
+            {"equals", "contains"},
+            "IDELIUM_DSL_EXPECTED_TEXT_COMPARISON",
+            "Use equals or contains for text assertions.",
+        )
 
     def _parse_locator(self) -> dict[str, str]:
         self._require_horizontal_spacing("Add a locator after the command keyword.")
@@ -346,6 +636,20 @@ class _Parser:
                 "Use ms, s, or m after a positive integer.",
             )
         return int(digits) * multiplier
+
+    def _parse_non_negative_integer(self, code: str, message: str) -> int:
+        start = self.index
+        while self._current_char().isdigit():
+            self.index += 1
+        digits = self.source[start : self.index]
+        if not digits:
+            self._fail_at_index(
+                code,
+                start,
+                message,
+                "Use an integer value such as 0, 1, or 5.",
+            )
+        return int(digits)
 
     def _read_keyword(self) -> str:
         start = self.index
@@ -531,6 +835,11 @@ class _Parser:
             self.source[probe + len(keyword) : probe + len(keyword) + 1]
         )
 
+    def _starts_with_keyword(self, keyword: str) -> bool:
+        return self.source.startswith(keyword, self.index) and not _is_word_char(
+            self.source[self.index + len(keyword) : self.index + len(keyword) + 1]
+        )
+
     def _validate_open_url(self, value: str, start: int) -> None:
         parsed = urlsplit(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -623,3 +932,7 @@ def _line_starts(source: str) -> list[int]:
 
 def _is_word_char(value: str) -> bool:
     return bool(value) and (value.isalnum() or value == "_")
+
+
+def _contains_interpolation(value: str) -> bool:
+    return "${" in value

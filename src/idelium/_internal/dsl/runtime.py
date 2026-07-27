@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -16,9 +16,14 @@ from selenium.webdriver.common.by import By
 REDACTED = "[REDACTED]"
 SUPPORTED_SCHEMA_VERSION = "1.0"
 SUPPORTED_LANGUAGE_VERSION = "1.0"
+ASSERTION_CONTRACT_VERSION = "dsl-assertion.v1"
 DEFAULT_WAIT_TIMEOUT_MILLISECONDS = 5000
 DEFAULT_POLL_INTERVAL_SECONDS = 0.1
 MAX_WAIT_TIMEOUT_MILLISECONDS = 120000
+DEFAULT_MAX_LOOP_ITERATIONS = 50
+DEFAULT_MAX_MACRO_EXPANSIONS = 25
+_VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_INTERPOLATION_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 class DslRuntimeError(RuntimeError):
@@ -31,12 +36,14 @@ class DslRuntimeError(RuntimeError):
         *,
         node: dict[str, Any] | None = None,
         remediation: str | None = None,
+        data: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.code = code
         self.message = message
         self.node = node or {}
         self.remediation = remediation
+        self.data = data or {}
 
     def as_diagnostic(self) -> dict[str, Any]:
         diagnostic = {
@@ -46,6 +53,8 @@ class DslRuntimeError(RuntimeError):
         }
         if self.remediation:
             diagnostic["remediation"] = self.remediation
+        if self.data:
+            diagnostic["data"] = self.data
         if "span" in self.node:
             diagnostic["span"] = self.node["span"]
         return diagnostic
@@ -61,16 +70,31 @@ class DslRuntimeOptions:
     poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
+    variables: dict[str, str] = field(default_factory=dict)
+    max_loop_iterations: int = DEFAULT_MAX_LOOP_ITERATIONS
+    max_macro_expansions: int = DEFAULT_MAX_MACRO_EXPANSIONS
 
 
 class DslAstRuntime:
     """Execute a validated canonical AST through allow-listed browser commands."""
 
-    _DOCUMENT_KEYS = {"kind", "schemaVersion", "languageVersion", "sourceName", "tests"}
+    _DOCUMENT_KEYS = {
+        "kind",
+        "schemaVersion",
+        "languageVersion",
+        "sourceName",
+        "steps",
+        "tests",
+    }
     _TEST_KEYS = {"kind", "name", "statements", "span"}
+    _REUSABLE_STEP_KEYS = {"kind", "name", "parameters", "statements", "span"}
     _LOCATOR_KEYS = {"strategy", "value"}
     _NODE_KEYS = {
         "open": {"kind", "url", "span"},
+        "variable": {"kind", "name", "value", "secret", "span"},
+        "call": {"kind", "name", "arguments", "span"},
+        "if": {"kind", "condition", "locator", "statements", "span"},
+        "repeat": {"kind", "count", "statements", "span"},
         "click": {"kind", "locator", "span"},
         "write": {"kind", "locator", "value", "sensitive", "span"},
         "wait": {"kind", "locator", "condition", "timeoutMilliseconds", "span"},
@@ -78,6 +102,23 @@ class DslAstRuntime:
         "assertText": {
             "kind",
             "locator",
+            "comparison",
+            "expected",
+            "sensitive",
+            "span",
+        },
+        "assertValue": {
+            "kind",
+            "locator",
+            "comparison",
+            "expected",
+            "sensitive",
+            "span",
+        },
+        "assertCount": {"kind", "locator", "comparison", "expected", "span"},
+        "assertRuntime": {
+            "kind",
+            "target",
             "comparison",
             "expected",
             "sensitive",
@@ -91,13 +132,25 @@ class DslAstRuntime:
     def __init__(self, driver: Any, options: DslRuntimeOptions | None = None):
         self.driver = driver
         self.options = options or DslRuntimeOptions()
+        self._variables: dict[str, str] = {}
+        self._secret_names: set[str] = set()
+        self._secret_values: set[str] = set()
+        self._reusable_steps: dict[str, dict[str, Any]] = {}
+        self._macro_depth = 0
         self._handlers = {
             "open": self._open,
+            "variable": self._variable,
+            "call": self._call,
+            "if": self._if,
+            "repeat": self._repeat,
             "click": self._click,
             "write": self._write,
             "wait": self._wait,
             "assertVisibility": self._assert_visibility,
             "assertText": self._assert_text,
+            "assertValue": self._assert_value,
+            "assertCount": self._assert_count,
+            "assertRuntime": self._assert_runtime,
             "back": self._back,
             "forward": self._forward,
             "screenshot": self._screenshot,
@@ -107,6 +160,7 @@ class DslAstRuntime:
         """Execute every AST test and return a stable serializable result."""
 
         self._validate_document(ast)
+        self._reusable_steps = self._collect_reusable_steps(ast)
         tests = []
         for test in ast["tests"]:
             tests.append(self._execute_test(test))
@@ -121,16 +175,10 @@ class DslAstRuntime:
 
     def _execute_test(self, test: dict[str, Any]) -> dict[str, Any]:
         self._validate_test(test)
-        statements = []
-        failed = False
-        for node in test["statements"]:
-            if failed:
-                statements.append(self._skipped_result(node))
-                continue
-            result = self._execute_node(node)
-            statements.append(result)
-            if result["status"] != "passed":
-                failed = True
+        self._variables = {str(key): str(value) for key, value in self.options.variables.items()}
+        self._secret_names = set()
+        self._secret_values = set()
+        statements, failed = self._execute_sequence(test["statements"])
         status = "passed" if not failed else "failed"
         return {
             "name": test["name"],
@@ -143,9 +191,10 @@ class DslAstRuntime:
         try:
             self._validate_node(node)
             output = self._handlers[node["kind"]](node)
+            status = "failed" if output.pop("__failed", False) else "passed"
             return self._node_result(
                 node,
-                "passed",
+                status,
                 started,
                 output=output,
             )
@@ -160,7 +209,7 @@ class DslAstRuntime:
             diagnostic = {
                 "level": "error",
                 "code": "IDELIUM_DSL_RUNTIME_COMMAND_FAILED",
-                "message": _redact_text(str(error)),
+                "message": self._redact_text(str(error)),
             }
             if "span" in node:
                 diagnostic["span"] = node["span"]
@@ -196,6 +245,13 @@ class DslAstRuntime:
                 "IDELIUM_DSL_RUNTIME_MISSING_TESTS",
                 "The DSL AST document must contain at least one test.",
             )
+        steps = ast.get("steps", [])
+        if not isinstance(steps, list):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_REUSABLE_STEPS",
+                "Reusable step definitions must be an array.",
+            )
+        self._validate_reusable_steps(steps)
 
     def _validate_test(self, test: dict[str, Any]) -> None:
         self._reject_unknown_keys(test, self._TEST_KEYS, test)
@@ -230,9 +286,17 @@ class DslAstRuntime:
                 "IDELIUM_DSL_RUNTIME_UNSUPPORTED_NODE",
                 "Unsupported DSL AST statement kind.",
                 node=node,
-                remediation="Use one of: open, click, write, wait, assertVisibility, assertText, back, forward, screenshot.",
+                remediation="Use one of: variable, call, open, click, write, wait, assertVisibility, assertText, back, forward, screenshot.",
             )
         self._reject_unknown_keys(node, self._NODE_KEYS[kind], node)
+        if kind == "variable":
+            self._validate_variable(node)
+        if kind == "call":
+            self._validate_call(node)
+        if kind == "if":
+            self._validate_if(node)
+        if kind == "repeat":
+            self._validate_repeat(node)
         if "locator" in node:
             self._validate_locator(node["locator"], node)
         if kind == "wait":
@@ -253,6 +317,179 @@ class DslAstRuntime:
             raise DslRuntimeError(
                 "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
                 "Text assertions must use equals or contains.",
+                node=node,
+            )
+        if kind == "assertValue" and node.get("comparison") not in {
+            "equals",
+            "contains",
+        }:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
+                "Value assertions must use equals or contains.",
+                node=node,
+            )
+        if kind == "assertCount" and node.get("comparison") not in {
+            "equals",
+            "greater_than",
+            "less_than",
+            "at_least",
+            "at_most",
+        }:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
+                "Count assertions must use a supported count comparison.",
+                node=node,
+            )
+        if kind == "assertCount" and (
+            not isinstance(node.get("expected"), int) or node["expected"] < 0
+        ):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
+                "Count assertions require a non-negative integer expected value.",
+                node=node,
+            )
+        if kind == "assertRuntime":
+            if node.get("target") not in {"url", "title"}:
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
+                    "Runtime assertions must target url or title.",
+                    node=node,
+                )
+            if node.get("comparison") not in {"equals", "contains"}:
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_ASSERTION",
+                    "Runtime assertions must use equals or contains.",
+                    node=node,
+                )
+
+    def _validate_reusable_steps(self, steps: list[dict[str, Any]]) -> None:
+        seen = set()
+        for reusable_step in steps:
+            if not isinstance(reusable_step, dict):
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_REUSABLE_STEP",
+                    "Reusable step definitions must be objects.",
+                )
+            self._reject_unknown_keys(
+                reusable_step,
+                self._REUSABLE_STEP_KEYS,
+                reusable_step,
+            )
+            if reusable_step.get("kind") != "reusableStep":
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_REUSABLE_STEP",
+                    "Reusable step definitions must use kind reusableStep.",
+                    node=reusable_step,
+                )
+            name = reusable_step.get("name")
+            if not isinstance(name, str) or not _VARIABLE_NAME_RE.fullmatch(name):
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_REUSABLE_STEP",
+                    "Reusable step names must be valid identifiers.",
+                    node=reusable_step,
+                )
+            if name in seen:
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_DUPLICATE_REUSABLE_STEP",
+                    "Reusable step names must be unique.",
+                    node=reusable_step,
+                )
+            seen.add(name)
+            parameters = reusable_step.get("parameters")
+            if not isinstance(parameters, list) or not all(
+                isinstance(parameter, str) and _VARIABLE_NAME_RE.fullmatch(parameter)
+                for parameter in parameters
+            ):
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_INVALID_REUSABLE_STEP",
+                    "Reusable step parameters must be valid identifiers.",
+                    node=reusable_step,
+                )
+            if len(parameters) != len(set(parameters)):
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_DUPLICATE_PARAMETER",
+                    "Reusable step parameters must be unique.",
+                    node=reusable_step,
+                )
+            self._validate_statement_list(reusable_step.get("statements"), reusable_step)
+
+    def _collect_reusable_steps(
+        self, ast: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        return {step["name"]: step for step in ast.get("steps", [])}
+
+    def _validate_call(self, node: dict[str, Any]) -> None:
+        name = node.get("name")
+        if not isinstance(name, str) or not _VARIABLE_NAME_RE.fullmatch(name):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_CALL",
+                "Reusable step calls require a valid step name.",
+                node=node,
+            )
+        arguments = node.get("arguments")
+        if not isinstance(arguments, list) or not all(
+            isinstance(argument, str) for argument in arguments
+        ):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_CALL",
+                "Reusable step calls require a string argument list.",
+                node=node,
+            )
+
+    def _validate_if(self, node: dict[str, Any]) -> None:
+        if node.get("condition") not in {"visible", "hidden"}:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_IF",
+                "If conditions must be visible or hidden.",
+                node=node,
+            )
+        self._validate_statement_list(node.get("statements"), node)
+
+    def _validate_repeat(self, node: dict[str, Any]) -> None:
+        count = node.get("count")
+        if not isinstance(count, int) or count <= 0:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_REPEAT",
+                "Repeat count must be a positive integer.",
+                node=node,
+            )
+        if count > self.options.max_loop_iterations:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_LOOP_BOUND_EXCEEDED",
+                "Repeat count exceeds the configured runtime bound.",
+                node=node,
+            )
+        self._validate_statement_list(node.get("statements"), node)
+
+    def _validate_statement_list(self, statements: Any, node: dict[str, Any]) -> None:
+        if not isinstance(statements, list):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_STATEMENTS",
+                "Control blocks require a statements array.",
+                node=node,
+            )
+        for child in statements:
+            self._validate_node(child)
+
+    def _validate_variable(self, node: dict[str, Any]) -> None:
+        if not isinstance(node.get("name"), str) or not _VARIABLE_NAME_RE.fullmatch(
+            node["name"]
+        ):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_VARIABLE",
+                "Variable names must start with a letter or underscore and contain only letters, numbers, or underscore.",
+                node=node,
+            )
+        if not isinstance(node.get("value"), str):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_VARIABLE",
+                "Variable values must be strings.",
+                node=node,
+            )
+        if not isinstance(node.get("secret"), bool):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_VARIABLE",
+                "Variable secret metadata must be boolean.",
                 node=node,
             )
 
@@ -314,8 +551,113 @@ class DslAstRuntime:
             )
 
     def _open(self, node: dict[str, Any]) -> dict[str, Any]:
-        self.driver.get(node["url"])
-        return {"url": _redact_url(node["url"])}
+        url = self._interpolate(node["url"], node)
+        self._validate_runtime_url(url, node)
+        self.driver.get(url)
+        return {"url": self._redact_url(url)}
+
+    def _variable(self, node: dict[str, Any]) -> dict[str, Any]:
+        value = self._interpolate(node["value"], node)
+        self._variables[node["name"]] = value
+        if node.get("secret"):
+            self._secret_names.add(node["name"])
+            if value:
+                self._secret_values.add(value)
+        else:
+            self._secret_names.discard(node["name"])
+        return {"name": node["name"], "secret": bool(node.get("secret"))}
+
+    def _call(self, node: dict[str, Any]) -> dict[str, Any]:
+        if node["name"] not in self._reusable_steps:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_UNKNOWN_REUSABLE_STEP",
+                "Reusable step is not defined.",
+                node=node,
+            )
+        if self._macro_depth >= self.options.max_macro_expansions:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_MACRO_EXPANSION_LIMIT",
+                "Reusable step expansion exceeded the configured runtime bound.",
+                node=node,
+            )
+        reusable_step = self._reusable_steps[node["name"]]
+        parameters = reusable_step["parameters"]
+        if len(node["arguments"]) != len(parameters):
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_CALL_ARITY_MISMATCH",
+                "Reusable step call argument count does not match its definition.",
+                node=node,
+            )
+        saved_variables = dict(self._variables)
+        saved_secret_names = set(self._secret_names)
+        saved_secret_values = set(self._secret_values)
+        arguments = []
+        try:
+            for parameter, argument in zip(parameters, node["arguments"], strict=True):
+                value = self._interpolate(argument, node)
+                self._variables[parameter] = value
+                if self._contains_secret_reference(argument):
+                    self._secret_names.add(parameter)
+                    if value:
+                        self._secret_values.add(value)
+                arguments.append(
+                    REDACTED if self._contains_secret_reference(argument) else value
+                )
+            self._macro_depth += 1
+            statements, failed = self._execute_sequence(reusable_step["statements"])
+            return {
+                "name": node["name"],
+                "arguments": arguments,
+                "statements": statements,
+                "__failed": failed,
+            }
+        finally:
+            self._macro_depth = max(0, self._macro_depth - 1)
+            self._variables = saved_variables
+            self._secret_names = saved_secret_names
+            self._secret_values = saved_secret_values
+
+    def _if(self, node: dict[str, Any]) -> dict[str, Any]:
+        matched = self._is_visible(node["locator"])
+        if node["condition"] == "hidden":
+            matched = not matched
+        if not matched:
+            return {
+                "conditionMatched": False,
+                "statements": [
+                    self._skipped_result(
+                        child,
+                        code="IDELIUM_DSL_RUNTIME_SKIPPED_CONDITION_FALSE",
+                        message="Statement skipped because the if condition was false.",
+                    )
+                    for child in node["statements"]
+                ],
+            }
+        statements, failed = self._execute_sequence(node["statements"])
+        return {
+            "conditionMatched": True,
+            "statements": statements,
+            "__failed": failed,
+        }
+
+    def _repeat(self, node: dict[str, Any]) -> dict[str, Any]:
+        iterations = []
+        failed = False
+        for iteration in range(node["count"]):
+            if failed:
+                iterations.append(
+                    {
+                        "index": iteration,
+                        "statements": [
+                            self._skipped_result(child)
+                            for child in node["statements"]
+                        ],
+                    }
+                )
+                continue
+            statements, failed = self._execute_sequence(node["statements"])
+            iterations.append({"index": iteration, "statements": statements})
+        return {"count": node["count"], "iterations": iterations, "__failed": failed}
 
     def _click(self, node: dict[str, Any]) -> dict[str, Any]:
         element = self._find(node["locator"])
@@ -324,10 +666,13 @@ class DslAstRuntime:
 
     def _write(self, node: dict[str, Any]) -> dict[str, Any]:
         element = self._find(node["locator"])
-        element.send_keys(node["value"])
+        value = self._interpolate(node["value"], node)
+        element.send_keys(value)
         return {
             "locator": self._safe_locator(node["locator"]),
-            "value": REDACTED if node.get("sensitive") else node["value"],
+            "value": REDACTED
+            if node.get("sensitive") or self._contains_secret_reference(node["value"])
+            else value,
         }
 
     def _wait(self, node: dict[str, Any]) -> dict[str, Any]:
@@ -355,34 +700,135 @@ class DslAstRuntime:
         visible = self._is_visible(node["locator"])
         expected_visible = node["expected"] == "visible"
         if visible != expected_visible:
+            assertion = self._assertion_payload(
+                "visibility",
+                node["expected"],
+                "equals",
+                node["expected"],
+                "visible" if visible else "hidden",
+                sensitive=False,
+            )
             raise DslRuntimeError(
                 "IDELIUM_DSL_RUNTIME_ASSERTION_FAILED",
                 "Visibility assertion failed.",
                 node=node,
+                data={"assertion": assertion},
             )
         return {
+            "assertion": self._assertion_payload(
+                "visibility",
+                node["expected"],
+                "equals",
+                node["expected"],
+                "visible" if visible else "hidden",
+                sensitive=False,
+            ),
             "locator": self._safe_locator(node["locator"]),
-            "expected": node["expected"],
         }
 
     def _assert_text(self, node: dict[str, Any]) -> dict[str, Any]:
         element = self._find(node["locator"])
         actual = getattr(element, "text", "")
-        expected = node["expected"]
+        expected = self._interpolate(node["expected"], node)
         passed = (
             actual == expected if node["comparison"] == "equals" else expected in actual
+        )
+        sensitive = node.get("sensitive") or self._contains_secret_reference(
+            node["expected"]
+        )
+        assertion = self._assertion_payload(
+            "text",
+            "text",
+            node["comparison"],
+            expected,
+            actual,
+            sensitive=sensitive,
         )
         if not passed:
             raise DslRuntimeError(
                 "IDELIUM_DSL_RUNTIME_ASSERTION_FAILED",
                 "Text assertion failed.",
                 node=node,
+                data={"assertion": assertion},
             )
         return {
             "locator": self._safe_locator(node["locator"]),
-            "comparison": node["comparison"],
-            "expected": REDACTED if node.get("sensitive") else expected,
+            "assertion": assertion,
         }
+
+    def _assert_value(self, node: dict[str, Any]) -> dict[str, Any]:
+        element = self._find(node["locator"])
+        actual = element.get_attribute("value") or ""
+        expected = self._interpolate(node["expected"], node)
+        passed = (
+            actual == expected if node["comparison"] == "equals" else expected in actual
+        )
+        sensitive = node.get("sensitive") or self._contains_secret_reference(
+            node["expected"]
+        )
+        assertion = self._assertion_payload(
+            "value",
+            "value",
+            node["comparison"],
+            expected,
+            actual,
+            sensitive=sensitive,
+        )
+        if not passed:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_ASSERTION_FAILED",
+                "Value assertion failed.",
+                node=node,
+                data={"assertion": assertion},
+            )
+        return {"locator": self._safe_locator(node["locator"]), "assertion": assertion}
+
+    def _assert_count(self, node: dict[str, Any]) -> dict[str, Any]:
+        actual = len(self._find_elements(node["locator"]))
+        expected = node["expected"]
+        passed = _compare_count(actual, expected, node["comparison"])
+        assertion = self._assertion_payload(
+            "count",
+            "count",
+            node["comparison"],
+            expected,
+            actual,
+            sensitive=False,
+        )
+        if not passed:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_ASSERTION_FAILED",
+                "Count assertion failed.",
+                node=node,
+                data={"assertion": assertion},
+            )
+        return {"locator": self._safe_locator(node["locator"]), "assertion": assertion}
+
+    def _assert_runtime(self, node: dict[str, Any]) -> dict[str, Any]:
+        actual = (
+            self.driver.current_url if node["target"] == "url" else self.driver.title
+        )
+        expected = self._interpolate(node["expected"], node)
+        passed = (
+            actual == expected if node["comparison"] == "equals" else expected in actual
+        )
+        sensitive = self._contains_secret_reference(node["expected"])
+        assertion = self._assertion_payload(
+            "runtime",
+            node["target"],
+            node["comparison"],
+            expected,
+            actual,
+            sensitive=sensitive,
+        )
+        if not passed:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_ASSERTION_FAILED",
+                "Runtime assertion failed.",
+                node=node,
+                data={"assertion": assertion},
+            )
+        return {"assertion": assertion}
 
     def _back(self, node: dict[str, Any]) -> dict[str, Any]:
         self.driver.back()
@@ -428,10 +874,106 @@ class DslAstRuntime:
 
     def _find(self, locator: dict[str, str]) -> Any:
         by = By.CSS_SELECTOR if locator["strategy"] == "css" else By.XPATH
-        return self.driver.find_element(by, locator["value"])
+        return self.driver.find_element(by, self._interpolate(locator["value"], {}))
+
+    def _find_elements(self, locator: dict[str, str]) -> Any:
+        by = By.CSS_SELECTOR if locator["strategy"] == "css" else By.XPATH
+        return self.driver.find_elements(by, self._interpolate(locator["value"], {}))
 
     def _safe_locator(self, locator: dict[str, str]) -> dict[str, str]:
-        return {"strategy": locator["strategy"], "value": locator["value"]}
+        return {
+            "strategy": locator["strategy"],
+            "value": self._redact_text(self._interpolate(locator["value"], {})),
+        }
+
+    def _interpolate(self, value: str, node: dict[str, Any]) -> str:
+        def replace(match: re.Match[str]) -> str:
+            name = match.group(1)
+            if name not in self._variables:
+                raise DslRuntimeError(
+                    "IDELIUM_DSL_RUNTIME_MISSING_VARIABLE",
+                    "Referenced DSL variable is not defined.",
+                    node=node,
+                    remediation="Declare it earlier in the same test with let or secret, or pass it as a runtime variable.",
+                )
+            return self._variables[name]
+
+        return _INTERPOLATION_RE.sub(replace, value)
+
+    def _contains_secret_reference(self, value: str) -> bool:
+        return any(
+            match.group(1) in self._secret_names
+            for match in _INTERPOLATION_RE.finditer(value)
+        )
+
+    def _validate_runtime_url(self, value: str, node: dict[str, Any]) -> None:
+        parts = urlsplit(value)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_INVALID_URL",
+                "Open command URL must resolve to absolute HTTP or HTTPS.",
+                node=node,
+            )
+        if parts.username or parts.password:
+            raise DslRuntimeError(
+                "IDELIUM_DSL_RUNTIME_URL_CREDENTIALS",
+                "URL credentials are not allowed.",
+                node=node,
+            )
+
+    def _redact_text(self, value: str) -> str:
+        redacted = _redact_text(value)
+        for secret_value in sorted(self._secret_values, key=len, reverse=True):
+            if secret_value:
+                redacted = redacted.replace(secret_value, REDACTED)
+        return redacted
+
+    def _redact_url(self, value: str) -> str:
+        redacted = _redact_url(value)
+        for secret_value in sorted(self._secret_values, key=len, reverse=True):
+            if secret_value:
+                redacted = redacted.replace(secret_value, REDACTED)
+        return redacted
+
+    def _assertion_payload(
+        self,
+        kind: str,
+        target: str,
+        operator: str,
+        expected: Any,
+        actual: Any,
+        *,
+        sensitive: bool,
+    ) -> dict[str, Any]:
+        if sensitive:
+            expected_value = REDACTED
+            actual_value = REDACTED
+        else:
+            expected_value = self._redact_text(str(expected))
+            actual_value = self._redact_text(str(actual))
+        return {
+            "contractVersion": ASSERTION_CONTRACT_VERSION,
+            "kind": kind,
+            "target": target,
+            "operator": operator,
+            "expected": expected_value,
+            "actual": actual_value,
+        }
+
+    def _execute_sequence(
+        self, statements: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], bool]:
+        results = []
+        failed = False
+        for node in statements:
+            if failed:
+                results.append(self._skipped_result(node))
+                continue
+            result = self._execute_node(node)
+            results.append(result)
+            if result["status"] != "passed":
+                failed = True
+        return results, failed
 
     def _node_result(
         self,
@@ -455,7 +997,13 @@ class DslAstRuntime:
             result["span"] = node["span"]
         return result
 
-    def _skipped_result(self, node: dict[str, Any]) -> dict[str, Any]:
+    def _skipped_result(
+        self,
+        node: dict[str, Any],
+        *,
+        code: str = "IDELIUM_DSL_RUNTIME_SKIPPED_AFTER_FAILURE",
+        message: str = "Statement skipped because a previous DSL statement failed.",
+    ) -> dict[str, Any]:
         result = {
             "kind": node.get("kind", "unknown"),
             "status": "skipped",
@@ -463,8 +1011,8 @@ class DslAstRuntime:
             "diagnostics": [
                 {
                     "level": "warning",
-                    "code": "IDELIUM_DSL_RUNTIME_SKIPPED_AFTER_FAILURE",
-                    "message": "Statement skipped because a previous DSL statement failed.",
+                    "code": code,
+                    "message": message,
                 }
             ],
             "output": {},
@@ -513,6 +1061,20 @@ def _is_sensitive_key(key: str) -> bool:
         "token",
         "x-api-key",
     }
+
+
+def _compare_count(actual: int, expected: int, operator: str) -> bool:
+    if operator == "equals":
+        return actual == expected
+    if operator == "greater_than":
+        return actual > expected
+    if operator == "less_than":
+        return actual < expected
+    if operator == "at_least":
+        return actual >= expected
+    if operator == "at_most":
+        return actual <= expected
+    return False
 
 
 _SENSITIVE_PATTERN = re.compile(

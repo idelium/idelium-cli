@@ -1,10 +1,16 @@
 (* Idelium DSL 1.0 normative grammar. *)
 
 source             = spacing, version-declaration, separator,
-                     test-declaration, { separator, test-declaration },
+                     { reusable-step-declaration, separator },
+                     test-declaration,
+                     { separator, reusable-step-declaration | separator, test-declaration },
                      spacing, end-of-input ;
 
 version-declaration = "idelium", required-spacing, "1.0" ;
+
+reusable-step-declaration = "step", required-spacing, identifier,
+                     parameter-list, spacing, "{",
+                     spacing, [ statement-list ], spacing, "}" ;
 
 test-declaration   = "test", required-spacing, string, spacing, "{",
                      spacing, [ statement-list ], spacing, "}" ;
@@ -13,15 +19,25 @@ statement-list     = statement, { statement-separator, statement },
                      [ statement-separator ] ;
 
 statement          = open-statement
+                   | variable-statement
+                   | call-statement
                    | click-statement
                    | write-statement
                    | wait-statement
+                   | if-statement
+                   | repeat-statement
                    | assert-visible-statement
                    | assert-text-statement
+                   | assert-value-statement
+                   | assert-count-statement
+                   | assert-runtime-statement
                    | back-statement
                    | forward-statement
                    | screenshot-statement ;
 
+variable-statement = ( "let" | "secret" ), required-spacing, identifier,
+                     spacing, "=", required-spacing, string ;
+call-statement     = "use", required-spacing, identifier, argument-list ;
 open-statement     = "open", required-spacing, string ;
 click-statement    = "click", required-spacing, locator ;
 write-statement    = "write", required-spacing, locator,
@@ -29,12 +45,28 @@ write-statement    = "write", required-spacing, locator,
 wait-statement     = "wait", required-spacing, locator,
                      required-spacing, wait-condition,
                      [ required-spacing, "timeout", required-spacing, duration ] ;
+if-statement       = "if", required-spacing, visibility-condition,
+                     required-spacing, locator, spacing, "{",
+                     spacing, [ statement-list ], spacing, "}" ;
+repeat-statement   = "repeat", required-spacing, positive-integer,
+                     required-spacing, "times", spacing, "{",
+                     spacing, [ statement-list ], spacing, "}" ;
 
 assert-visible-statement = "assert", required-spacing,
                            visibility-condition, required-spacing, locator ;
 assert-text-statement = "assert", required-spacing, "text",
                         required-spacing, locator, required-spacing,
                         text-comparison, required-spacing, string ;
+assert-value-statement = "assert", required-spacing, "value",
+                        required-spacing, locator, required-spacing,
+                        text-comparison, required-spacing, string ;
+assert-count-statement = "assert", required-spacing, "count",
+                        required-spacing, locator, required-spacing,
+                        count-comparison, required-spacing,
+                        non-negative-integer ;
+assert-runtime-statement = "assert", required-spacing, runtime-target,
+                        required-spacing, text-comparison,
+                        required-spacing, string ;
 
 back-statement     = "back" ;
 forward-statement  = "forward" ;
@@ -45,9 +77,28 @@ locator-strategy   = "css" | "xpath" ;
 wait-condition     = "present" | "visible" | "hidden" | "clickable" ;
 visibility-condition = "visible" | "hidden" ;
 text-comparison    = "equals" | "contains" ;
+count-comparison   = "equals" | "greater_than" | "less_than"
+                   | "at_least" | "at_most" ;
+runtime-target     = "url" | "title" ;
+
+identifier         = identifier-start, { identifier-character } ;
+identifier-start   = "A" | "B" | "C" | "D" | "E" | "F" | "G"
+                   | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+                   | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+                   | "V" | "W" | "X" | "Y" | "Z"
+                   | "a" | "b" | "c" | "d" | "e" | "f" | "g"
+                   | "h" | "i" | "j" | "k" | "l" | "m" | "n"
+                   | "o" | "p" | "q" | "r" | "s" | "t" | "u"
+                   | "v" | "w" | "x" | "y" | "z" | "_" ;
+identifier-character = identifier-start | digit ;
+parameter-list    = "(", spacing, [ identifier, { spacing, ",", spacing, identifier } ],
+                    spacing, ")" ;
+argument-list     = "(", spacing, [ string, { spacing, ",", spacing, string } ],
+                    spacing, ")" ;
 
 duration           = positive-integer, ( "ms" | "s" | "m" ) ;
 positive-integer   = non-zero-digit, { digit } ;
+non-negative-integer = "0" | positive-integer ;
 non-zero-digit     = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 digit              = "0" | non-zero-digit ;
 
@@ -72,4 +123,3 @@ tab                = ? Unicode U+0009 ? ;
 CR                 = ? Unicode U+000D ? ;
 LF                 = ? Unicode U+000A ? ;
 end-of-input       = ? end of source ? ;
-

@@ -10,6 +10,10 @@
     "schemaVersion": {"const": "1.0"},
     "languageVersion": {"const": "1.0"},
     "sourceName": {"type": "string", "minLength": 1, "maxLength": 255},
+    "steps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reusableStep"}
+    },
     "tests": {
       "type": "array",
       "minItems": 1,
@@ -58,18 +62,81 @@
         "span": {"$ref": "#/$defs/span"}
       }
     },
+    "reusableStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "parameters", "statements", "span"],
+      "properties": {
+        "kind": {"const": "reusableStep"},
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "statements": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/statement"}
+        },
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
     "statement": {
       "oneOf": [
+        {"$ref": "#/$defs/variable"},
+        {"$ref": "#/$defs/call"},
         {"$ref": "#/$defs/open"},
         {"$ref": "#/$defs/click"},
         {"$ref": "#/$defs/write"},
         {"$ref": "#/$defs/wait"},
+        {"$ref": "#/$defs/if"},
+        {"$ref": "#/$defs/repeat"},
         {"$ref": "#/$defs/assertVisibility"},
         {"$ref": "#/$defs/assertText"},
+        {"$ref": "#/$defs/assertValue"},
+        {"$ref": "#/$defs/assertCount"},
+        {"$ref": "#/$defs/assertRuntime"},
         {"$ref": "#/$defs/back"},
         {"$ref": "#/$defs/forward"},
         {"$ref": "#/$defs/screenshot"}
       ]
+    },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "value", "secret", "span"],
+      "properties": {
+        "kind": {"const": "variable"},
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "value": {"type": "string"},
+        "secret": {"type": "boolean"},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "arguments", "span"],
+      "properties": {
+        "kind": {"const": "call"},
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "span": {"$ref": "#/$defs/span"}
+      }
     },
     "open": {
       "type": "object",
@@ -77,7 +144,14 @@
       "required": ["kind", "url", "span"],
       "properties": {
         "kind": {"const": "open"},
-        "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "anyOf": [
+            {"format": "uri", "pattern": "^https?://"},
+            {"pattern": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}"}
+          ]
+        },
         "span": {"$ref": "#/$defs/span"}
       }
     },
@@ -115,6 +189,35 @@
         "span": {"$ref": "#/$defs/span"}
       }
     },
+    "if": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "condition", "locator", "statements", "span"],
+      "properties": {
+        "kind": {"const": "if"},
+        "condition": {"enum": ["visible", "hidden"]},
+        "locator": {"$ref": "#/$defs/locator"},
+        "statements": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/statement"}
+        },
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "repeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "count", "statements", "span"],
+      "properties": {
+        "kind": {"const": "repeat"},
+        "count": {"type": "integer", "minimum": 1},
+        "statements": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/statement"}
+        },
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
     "assertVisibility": {
       "type": "object",
       "additionalProperties": false,
@@ -140,6 +243,53 @@
       "properties": {
         "kind": {"const": "assertText"},
         "locator": {"$ref": "#/$defs/locator"},
+        "comparison": {"enum": ["equals", "contains"]},
+        "expected": {"type": "string"},
+        "sensitive": {"type": "boolean"},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "assertValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "locator",
+        "comparison",
+        "expected",
+        "sensitive",
+        "span"
+      ],
+      "properties": {
+        "kind": {"const": "assertValue"},
+        "locator": {"$ref": "#/$defs/locator"},
+        "comparison": {"enum": ["equals", "contains"]},
+        "expected": {"type": "string"},
+        "sensitive": {"type": "boolean"},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "assertCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "locator", "comparison", "expected", "span"],
+      "properties": {
+        "kind": {"const": "assertCount"},
+        "locator": {"$ref": "#/$defs/locator"},
+        "comparison": {
+          "enum": ["equals", "greater_than", "less_than", "at_least", "at_most"]
+        },
+        "expected": {"type": "integer", "minimum": 0},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "assertRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target", "comparison", "expected", "sensitive", "span"],
+      "properties": {
+        "kind": {"const": "assertRuntime"},
+        "target": {"enum": ["url", "title"]},
         "comparison": {"enum": ["equals", "contains"]},
         "expected": {"type": "string"},
         "sensitive": {"type": "boolean"},
@@ -180,4 +330,3 @@
     }
   }
 }
-
