@@ -106,6 +106,19 @@ test take precedence from the declaration point onward. Referencing a missing
 variable is a runtime validation failure and must not echo the variable name as
 a sensitive value.
 
+Runtime-provided variables may be loaded from a structured parameter file and
+overridden by CLI-provided parameters. Precedence is:
+
+1. parameter file `variables` and `secrets`;
+2. CLI non-secret parameters;
+3. CLI secret parameters.
+
+Parameter names follow the same identifier rules as DSL variables. Parameter
+values must be strings. Malformed files, invalid names, invalid values, and
+malformed `name=value` assignments fail during CLI validation before DSL
+execution starts. Secret parameters are expanded for execution but must be
+redacted from normal output, reports, diagnostics, and tracebacks.
+
 ### 3.4 Reusable steps
 
 Reusable steps are declared at document level before or between tests:

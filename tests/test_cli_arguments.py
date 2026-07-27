@@ -116,6 +116,71 @@ class CliArgumentParsingTest(unittest.TestCase):
         self.assertEqual("tests/login.idelium", defined["cl_params"]["dslSource"])
         self.assertEqual("reports/login.ast.json", defined["cl_params"]["astReport"])
 
+    def test_accepts_dsl_parameters_from_file_and_cli(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        with patch("pathlib.Path.read_text") as read_text:
+            read_text.return_value = (
+                '{"variables": {"baseUrl": "https://file.example.invalid"}, '
+                '"secrets": {"password": "file-secret"}}'
+            )
+            defined = loader.define_parameters(
+                [
+                    "idelium",
+                    "--dslSource",
+                    "tests/login.idelium",
+                    "--astReport",
+                    "reports/login.ast.json",
+                    "--dslParamsFile",
+                    "params.json",
+                    "--dslParam",
+                    "baseUrl=https://cli.example.invalid",
+                    "--dslSecret",
+                    "token=cli-secret",
+                ],
+                Mock(),
+                printer,
+            )
+
+        self.assertEqual(
+            {
+                "baseUrl": "https://cli.example.invalid",
+                "password": "file-secret",
+                "token": "cli-secret",
+            },
+            defined["cl_params"]["dslParameters"]["variables"],
+        )
+        self.assertEqual(
+            ["password", "token"],
+            defined["cl_params"]["dslParameters"]["secretNames"],
+        )
+
+    def test_invalid_dsl_parameter_exits_with_stable_code(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        with patch("builtins.print"), self.assertRaises(SystemExit) as raised:
+            loader.define_parameters(
+                [
+                    "idelium",
+                    "--dslSource",
+                    "tests/login.idelium",
+                    "--astReport",
+                    "reports/login.ast.json",
+                    "--dslParam",
+                    "not-an-assignment",
+                ],
+                Mock(),
+                printer,
+            )
+
+        self.assertEqual(1, raised.exception.code)
+        self.assertIn(
+            "IDELIUM_DSL_PARAMETER_ASSIGNMENT_INVALID",
+            printer.danger.call_args.args[0],
+        )
+
     def test_missing_option_value_exits_with_clear_error(self):
         loader = InitIdelium()
         printer = Mock()

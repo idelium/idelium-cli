@@ -8,6 +8,7 @@ from pathlib import Path
 import selenium
 
 from idelium._internal.commons.connection import Connection
+from idelium._internal.dsl.parameters import DslParameterError, resolve_dsl_parameters
 
 
 class InitIdelium:
@@ -56,6 +57,9 @@ class InitIdelium:
     --junitReport           write a JUnit XML execution report to this path
     --dslSource             parse this Idelium DSL source file for offline AST export
     --astReport             write a canonical DSL AST JSON document to this path
+    --dslParamsFile         JSON file with DSL variables and secrets
+    --dslParam              DSL runtime parameter in name=value form
+    --dslSecret             DSL runtime secret parameter in name=value form
     --reportingService      where the data will be save: idelium | zephyr
     --ideliumKey            is the key for access to the idelium api
     --idChannel             idChannel
@@ -138,6 +142,10 @@ class InitIdelium:
             "junitReport": None,
             "dslSource": None,
             "astReport": None,
+            "dslParamsFile": None,
+            "dslParam": [],
+            "dslSecret": [],
+            "dslParameters": None,
             "count": 0,
             "ideliumKey": None,
             "forcedownload": False,
@@ -190,6 +198,8 @@ class InitIdelium:
             if command in cl_params:
                 if command == "ideliumKey":
                     cl_params["ideliumKey"] = value
+                elif command in {"dslParam", "dslSecret"}:
+                    cl_params[command].append(value)
                 elif command in flag_parameters:
                     cl_params[command] = True
                 elif command == "ideliumServerPort":
@@ -219,6 +229,7 @@ class InitIdelium:
                 printer.danger("dslSource and astReport are required together")
                 sys.exit(1)
             self.configure_http(cl_params, printer)
+            self.configure_dsl_parameters(cl_params, printer)
             return {
                 "cl_params": cl_params,
             }
@@ -252,9 +263,25 @@ class InitIdelium:
                     printer.danger("\nideliumwsBaseurl must be set")
                     sys.exit(1)
         self.configure_http(cl_params, printer)
+        self.configure_dsl_parameters(cl_params, printer)
         return {
             "cl_params": cl_params,
         }
+
+    @staticmethod
+    def configure_dsl_parameters(cl_params, printer):
+        """Resolve DSL runtime parameters from file and CLI overrides."""
+
+        try:
+            resolved = resolve_dsl_parameters(
+                parameter_file=cl_params.get("dslParamsFile"),
+                cli_parameters=cl_params.get("dslParam"),
+                cli_secret_parameters=cl_params.get("dslSecret"),
+            )
+        except DslParameterError as error:
+            printer.danger(error.code + ": " + error.message)
+            sys.exit(1)
+        cl_params["dslParameters"] = resolved.as_config()
 
     @staticmethod
     def configure_http(cl_params, printer):

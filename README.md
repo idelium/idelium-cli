@@ -150,6 +150,9 @@ flag.
 | `--junitReport=<path>` | Write a JUnit XML report for CI test consumers | disabled |
 | `--dslSource=<path>` | Parse this DSL source file for offline AST export | disabled |
 | `--astReport=<path>` | Write the canonical DSL AST JSON document | disabled |
+| `--dslParamsFile=<path>` | Load DSL variables/secrets from JSON | disabled |
+| `--dslParam=<name=value>` | Add or override a non-secret DSL parameter | repeatable |
+| `--dslSecret=<name=value>` | Add or override a secret DSL parameter | repeatable |
 | `--verbose` | Emit additional redacted diagnostics | off |
 | `--help` | Display built-in command help | — |
 
@@ -250,6 +253,32 @@ The AST export is a separate contract from execution results. It uses
 `schemaVersion: "1.0"` and `languageVersion: "1.0"` and is intended for static
 validation, migration tooling, and review workflows. Unsupported future DSL
 versions fail before any output is written.
+
+DSL runtime parameters may come from a JSON file and CLI overrides. File values
+load first, then `--dslParam` and `--dslSecret` override by name:
+
+```json
+{
+  "variables": {
+    "baseUrl": "https://example.invalid"
+  },
+  "secrets": {
+    "password": "use-a-secret-manager-in-ci"
+  }
+}
+```
+
+```bash
+idelium --dslSource=tests/login.idelium \
+  --astReport=reports/login.ast.json \
+  --dslParamsFile=local.dsl-params.json \
+  --dslParam=baseUrl=https://staging.example.invalid \
+  --dslSecret=password="$IDELIUM_PASSWORD"
+```
+
+Parameter names use DSL identifier rules. Values must be strings. Secret
+parameters are marked for runtime redaction and should not be printed or stored
+in reports.
 
 ## Selenium execution
 

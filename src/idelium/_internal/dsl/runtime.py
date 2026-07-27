@@ -71,6 +71,7 @@ class DslRuntimeOptions:
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
     variables: dict[str, str] = field(default_factory=dict)
+    secret_names: set[str] = field(default_factory=set)
     max_loop_iterations: int = DEFAULT_MAX_LOOP_ITERATIONS
     max_macro_expansions: int = DEFAULT_MAX_MACRO_EXPANSIONS
 
@@ -176,8 +177,14 @@ class DslAstRuntime:
     def _execute_test(self, test: dict[str, Any]) -> dict[str, Any]:
         self._validate_test(test)
         self._variables = {str(key): str(value) for key, value in self.options.variables.items()}
-        self._secret_names = set()
-        self._secret_values = set()
+        self._secret_names = {
+            str(name)
+            for name in self.options.secret_names
+            if str(name) in self._variables
+        }
+        self._secret_values = {
+            self._variables[name] for name in self._secret_names if self._variables[name]
+        }
         statements, failed = self._execute_sequence(test["statements"])
         status = "passed" if not failed else "failed"
         return {
