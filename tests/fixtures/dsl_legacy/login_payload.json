@@ -1,0 +1,54 @@
+{
+  "name": "Legacy login",
+  "steps": [
+    {
+      "stepType": "open_browser",
+      "url": "https://example.invalid/login"
+    },
+    {
+      "stepType": "wait_for_next_step",
+      "findBy": "css",
+      "target": "#email",
+      "waitCondition": "visible",
+      "waitSeconds": 1
+    },
+    {
+      "stepType": "send_keys",
+      "findBy": "css",
+      "target": "#email",
+      "value": "user@example.invalid"
+    },
+    {
+      "stepType": "send_keys",
+      "findBy": "css",
+      "target": "#password",
+      "value": "legacy-secret"
+    },
+    {
+      "stepType": "click",
+      "xpath": "//button[@type='submit']"
+    },
+    {
+      "stepType": "find_element",
+      "findBy": "css",
+      "target": "#dashboard"
+    },
+    {
+      "stepType": "assert_text",
+      "findBy": "css",
+      "target": "h1",
+      "comparison": "equals",
+      "expected": "Dashboard"
+    },
+    {
+      "stepType": "back"
+    },
+    {
+      "stepType": "forward"
+    },
+    {
+      "stepType": "screen_shot",
+      "name": "legacy-login"
+    }
+  ]
+}

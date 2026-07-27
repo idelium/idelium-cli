@@ -255,6 +255,8 @@ The AST export is a separate contract from execution results. It uses
 `schemaVersion: "1.0"` and `languageVersion: "1.0"` and is intended for static
 validation, migration tooling, and review workflows. Unsupported future DSL
 versions fail before any output is written.
+Legacy compatibility and intentional incompatibilities are documented in
+[docs/dsl/v1/MIGRATION.md](docs/dsl/v1/MIGRATION.md).
 
 DSL runtime parameters may come from a JSON file and CLI overrides. File values
 load first, then `--dslParam` and `--dslSecret` override by name:

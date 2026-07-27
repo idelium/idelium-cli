@@ -1,0 +1,14 @@
+idelium 1.0
+
+test "Legacy login" {
+    open "https://example.invalid/login"
+    wait css "#email" visible timeout 250ms
+    write css "#email" value "user@example.invalid"
+    write css "#password" value "legacy-secret"
+    click xpath "//button[@type='submit']"
+    assert visible css "#dashboard"
+    assert text css "h1" equals "Dashboard"
+    back
+    forward
+    screenshot "legacy-login"
+}

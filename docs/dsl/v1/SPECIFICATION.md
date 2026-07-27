@@ -574,6 +574,10 @@ An implementation conforms to DSL v1.0 when it:
 - produces the versioned canonical AST defined by the Idelium AST contract;
 - passes the DSL v1 conformance suite.
 
+Legacy compatibility fixtures and intentional incompatibilities are maintained
+in [MIGRATION.md](MIGRATION.md). The compatibility corpus must remain
+network-free and executable without a browser dependency.
+
 The canonical AST schema, parser implementation, and execution adapter are
 separate versioned contracts and may evolve independently while preserving these
 language semantics.
