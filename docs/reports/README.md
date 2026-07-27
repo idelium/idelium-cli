@@ -31,3 +31,8 @@ bounded structured `data` payload for execution diagnostics such as BiDi console
 events. Structured artifact payloads are redacted before serialization and must
 not contain credentials, session identifiers, authorization headers, or raw BiDi
 endpoint URLs.
+
+Failure screenshot artifacts use the deterministic name `failure-screenshot.png`
+and media type `image/png`. Their metadata includes `captureOutcome`,
+`mediaType`, `sizeBytes`, `sourceTestId`, and `sourceStepId` so storage and API
+consumers can associate the attachment without exposing tenant-specific labels.

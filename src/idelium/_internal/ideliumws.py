@@ -536,7 +536,15 @@ class IdeliumWs:
                     "type": "image/png",
                     "path": str(screenshot_path),
                     "data": {
+                        "captureOutcome": "captured",
+                        "mediaType": "image/png",
                         "sizeBytes": size_bytes,
+                        "sourceStepId": (
+                            IdeliumWs._safe_artifact_id(id_step)
+                            if id_step is not None
+                            else "pending-step"
+                        ),
+                        "sourceTestId": IdeliumWs._safe_artifact_id(id_test),
                         "source": "webdriver-failure",
                     },
                 }

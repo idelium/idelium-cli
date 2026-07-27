@@ -545,7 +545,11 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         self.assertEqual("failure-screenshot.png", artifact["name"])
         self.assertEqual("image/png", artifact["type"])
         self.assertEqual("screenshots/11.png", artifact["path"])
+        self.assertEqual("captured", artifact["data"]["captureOutcome"])
+        self.assertEqual("image/png", artifact["data"]["mediaType"])
         self.assertEqual("3", artifact["data"]["sizeBytes"])
+        self.assertEqual("pending-step", artifact["data"]["sourceStepId"])
+        self.assertEqual("11", artifact["data"]["sourceTestId"])
         wrapper.screen_shot.assert_called_once()
 
     def test_screenshot_errors_do_not_hide_original_failure(self):

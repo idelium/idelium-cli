@@ -46,9 +46,10 @@ teardown through the adapter. Cleanup failures are reported with
 
 Eligible browser-step failures capture at most one screenshot artifact for the
 local execution report. The artifact metadata uses a generic name,
-`failure-screenshot.png`, a local relative path, and bounded size metadata. If
-screenshot capture fails, Idelium records a warning and keeps the original test
-failure unchanged.
+`failure-screenshot.png`, media type `image/png`, a local relative path, bounded
+size metadata, safe source test/step identifiers, and a `captureOutcome` value.
+If screenshot capture fails, Idelium records a warning and keeps the original
+test failure unchanged.
 
 ## Download behavior
 
