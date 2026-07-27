@@ -9,6 +9,10 @@ import selenium
 
 from idelium._internal.commons.connection import Connection
 from idelium._internal.dsl.parameters import DslParameterError, resolve_dsl_parameters
+from idelium._internal.environment_resolution import (
+    EnvironmentResolutionError,
+    resolve_environment,
+)
 
 
 class InitIdelium:
@@ -341,15 +345,30 @@ class InitIdelium:
         if test_config is False:
             return False
         print("Environment:" + cl_params["environment"])
-        if cl_params["environment"] in test_config["environments"]:
-            json_config = test_config["environments"][cl_params["environment"]]
-        else:
+        try:
+            resolved_environment = resolve_environment(
+                test_config["environments"],
+                cl_params["environment"],
+                project_id=cl_params["idProject"],
+                overrides={
+                    "url": cl_params.get("url"),
+                    "seleniumGridUrl": cl_params.get("seleniumGridUrl"),
+                    "seleniumGridCapabilities": cl_params.get(
+                        "seleniumGridCapabilities"
+                    ),
+                    "bidiMode": None
+                    if cl_params.get("bidiMode") == "disabled"
+                    else cl_params.get("bidiMode"),
+                },
+            )
+            json_config = resolved_environment.config
+            cl_params["environmentResolution"] = resolved_environment.as_dict()
+        except EnvironmentResolutionError as error:
+            diagnostic = error.as_diagnostic()
             printer.danger(
-                'Environment "'
-                + cl_params["environment"]
-                + '" or idProject '
-                + cl_params["idProject"]
-                + " not exist"
+                diagnostic["code"]
+                + ": "
+                + diagnostic["message"]
             )
             sys.exit(1)
         if "userAgent" in json_config:
@@ -396,8 +415,6 @@ class InitIdelium:
             json_step_config["idProject"] = cl_params["idProject"]
         if "device" in json_config:
             cl_params["device"] = json_config["device"]
-        if cl_params["url"] is not None:
-            json_config["url"] = cl_params["url"]
         cl_params["json_config"] = json_config
         cl_params["json_step_config"] = json_step_config
 

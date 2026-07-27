@@ -581,9 +581,11 @@ Tests are network-free by default and cover HTTP transport behavior, sensitive
 data redaction, metadata, Selenium Grid, Appium, Postman execution, and the
 [parallel execution scheduling contract](docs/parallel-execution/README.md).
 Retry and timeout behavior is centralized in the
-[retry and wait policy contract](docs/retry-wait-policy/README.md). Add a
-regression test for every fix and boundary tests for parsing, timeouts, retries,
-TLS behavior, and error handling when those areas change.
+[retry and wait policy contract](docs/retry-wait-policy/README.md), and
+environment inheritance/overrides are defined in the
+[environment resolution contract](docs/environments/README.md). Add a regression
+test for every fix and boundary tests for parsing, timeouts, retries, TLS
+behavior, and error handling when those areas change.
 
 Run the same checks used by CI:
 
