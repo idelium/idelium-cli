@@ -8,7 +8,7 @@ backend.
 
 | Version | Status | Specification |
 | --- | --- | --- |
-| 1.0 | Draft | [DSL v1 specification](v1/SPECIFICATION.md) and [canonical AST](v1/AST.md) |
+| 1.0 | Draft | [getting started](v1/GETTING_STARTED.md), [DSL v1 specification](v1/SPECIFICATION.md), and [canonical AST](v1/AST.md) |
 
 The v1 specification is normative for the language surface. The current Idelium
 CLI still executes persisted JSON steps; parser, canonical AST, and execution
@@ -27,6 +27,14 @@ driver object and returns a stable JSON-serializable result:
 - `assert visible`
 - `assert hidden`
 - `assert text`
+- `assert value`
+- `assert count`
+- `assert url`
+- `assert title`
+- `let` / `secret`
+- `step` / `use`
+- `if`
+- `repeat`
 - `back`
 - `forward`
 - `screenshot`
@@ -77,8 +85,7 @@ Recommended authoring rules:
 1. Keep keywords lowercase.
 2. Prefer stable CSS selectors or explicit XPath expressions.
 3. Use `wait ... clickable` before clicking dynamic controls.
-4. Keep credentials out of source files; later DSL revisions will add secure
-   parameter sources.
+4. Keep credentials out of source files; use secure DSL parameters for secrets.
 5. Use named screenshots for reviewable checkpoints.
 6. Treat parser and runtime diagnostics as release-blocking feedback.
 

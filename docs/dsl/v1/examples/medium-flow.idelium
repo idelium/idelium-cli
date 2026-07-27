@@ -1,0 +1,29 @@
+idelium 1.0
+
+step login(email, password) {
+    write css "#email" value "${email}"
+    write css "#password" value "${password}"
+    click css "button[type='submit']"
+}
+
+test "Dashboard health" {
+    let baseUrl = "https://example.invalid"
+    secret password = "replace-with-runtime-secret"
+
+    open "${baseUrl}/login"
+    wait css "#email" visible timeout 10s
+    use login("user@example.invalid", "${password}")
+    wait css "#dashboard" visible timeout 10s
+
+    if visible css ".toast" {
+        screenshot "toast-visible"
+    }
+
+    repeat 2 times {
+        click css ".refresh"
+    }
+
+    assert url contains "/login"
+    assert title contains "Dashboard"
+    assert count css ".metric-card" at_least 1
+}

@@ -29,6 +29,8 @@ CI, and Bamboo, and remotely managed test-execution hosts.
 The versioned
 [Idelium DSL specification](https://github.com/idelium/idelium-cli/blob/main/docs/dsl/README.md)
 defines the human-readable language that will sit above the execution engine.
+Start with the [DSL v1 getting-started guide](docs/dsl/v1/GETTING_STARTED.md)
+for authoring, validation, parameters, reuse, execution, and troubleshooting.
 DSL v1.0 currently specifies navigation, locators, input, explicit waits,
 versioned assertions, browser history, screenshots, typed string variables,
 deterministic `${name}` interpolation, validated `if` blocks, bounded `repeat`

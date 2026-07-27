@@ -15,8 +15,11 @@ DSL_V1_ROOT = REPOSITORY_ROOT / "docs" / "dsl" / "v1"
 STRING = r'"(?:\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4})|[^"\\\x00-\x1f])*"'
 LOCATOR = rf"(?:css|xpath)\s+({STRING})"
 DURATION = r"[1-9][0-9]*(?:ms|s|m)"
+IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
 
 STATEMENT_PATTERNS = {
+    "variable": re.compile(rf"(?:let|secret)\s+{IDENTIFIER}\s*=\s*({STRING})"),
+    "call": re.compile(rf"use\s+{IDENTIFIER}\((?:{STRING}(?:\s*,\s*{STRING})*)?\)"),
     "open": re.compile(rf"open\s+({STRING})"),
     "click": re.compile(rf"click\s+{LOCATOR}"),
     "write": re.compile(rf"write\s+{LOCATOR}\s+value\s+({STRING})"),
@@ -28,6 +31,18 @@ STATEMENT_PATTERNS = {
     "assert_text": re.compile(
         rf"assert\s+text\s+{LOCATOR}\s+(?:equals|contains)\s+({STRING})"
     ),
+    "assert_value": re.compile(
+        rf"assert\s+value\s+{LOCATOR}\s+(?:equals|contains)\s+({STRING})"
+    ),
+    "assert_count": re.compile(
+        rf"assert\s+count\s+{LOCATOR}\s+"
+        r"(?:equals|greater_than|less_than|at_least|at_most)\s+[0-9]+"
+    ),
+    "assert_runtime": re.compile(
+        rf"assert\s+(?:url|title)\s+(?:equals|contains)\s+({STRING})"
+    ),
+    "if": re.compile(rf"if\s+(?:visible|hidden)\s+{LOCATOR}\s+\{{"),
+    "repeat": re.compile(r"repeat\s+[1-9][0-9]*\s+times\s+\{"),
     "back": re.compile(r"back"),
     "forward": re.compile(r"forward"),
     "screenshot": re.compile(rf"screenshot\s+({STRING})"),
@@ -68,8 +83,15 @@ class DslSpecificationTest(unittest.TestCase):
             "click-statement",
             "write-statement",
             "wait-statement",
+            "variable-statement",
+            "call-statement",
+            "if-statement",
+            "repeat-statement",
             "assert-visible-statement",
             "assert-text-statement",
+            "assert-value-statement",
+            "assert-count-statement",
+            "assert-runtime-statement",
             "back-statement",
             "forward-statement",
             "screenshot-statement",
@@ -143,7 +165,7 @@ class DslSpecificationTest(unittest.TestCase):
         self.assertEqual("idelium 1.0", lines[0])
         self.assertGreaterEqual(lines.count("}"), 1)
 
-        inside_test = False
+        block_stack = []
         test_names = set()
         statement_count = 0
         for line in lines[1:]:
@@ -152,26 +174,35 @@ class DslSpecificationTest(unittest.TestCase):
 
             test_match = re.fullmatch(rf"test\s+({STRING})\s+\{{", line)
             if test_match:
-                self.assertFalse(inside_test)
                 test_name = json.loads(test_match.group(1))
                 self.assertTrue(test_name.strip())
                 self.assertNotIn(test_name, test_names)
                 test_names.add(test_name)
-                inside_test = True
+                block_stack.append("test")
+                continue
+
+            step_match = re.fullmatch(
+                rf"step\s+{IDENTIFIER}\((?:{IDENTIFIER}(?:\s*,\s*{IDENTIFIER})*)?\)\s+\{{",
+                line,
+            )
+            if step_match:
+                block_stack.append("step")
                 continue
 
             if line == "}":
-                self.assertTrue(inside_test)
-                inside_test = False
+                self.assertTrue(block_stack)
+                block_stack.pop()
                 continue
 
-            self.assertTrue(inside_test)
+            self.assertTrue(block_stack)
             statement_name = self._statement_name(line)
             self.assertIsNotNone(statement_name, f"Unsupported DSL statement: {line}")
             self._validate_statement_literals(statement_name, line)
             statement_count += 1
+            if statement_name in {"if", "repeat"}:
+                block_stack.append(statement_name)
 
-        self.assertFalse(inside_test)
+        self.assertFalse(block_stack)
         self.assertTrue(test_names)
         self.assertGreater(statement_count, 0)
 
@@ -189,6 +220,8 @@ class DslSpecificationTest(unittest.TestCase):
         self.assertTrue(all(value for value in literals))
 
         if statement_name == "open":
+            if "${" in literals[0]:
+                return
             parsed = urlsplit(literals[0])
             self.assertIn(parsed.scheme, {"http", "https"})
             self.assertTrue(parsed.netloc)

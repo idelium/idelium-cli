@@ -559,6 +559,7 @@ The version-controlled examples are:
 
 - [Minimal navigation](examples/minimal.idelium)
 - [Login flow](examples/login.idelium)
+- [Medium flow with reuse and parameters](examples/medium-flow.idelium)
 - [Navigation and screenshot](examples/navigation-and-screenshot.idelium)
 
 These examples are informative but must remain valid DSL v1.0 source.
