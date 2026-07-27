@@ -580,8 +580,10 @@ and build-system dependencies are pinned to supported ranges in
 Tests are network-free by default and cover HTTP transport behavior, sensitive
 data redaction, metadata, Selenium Grid, Appium, Postman execution, and the
 [parallel execution scheduling contract](docs/parallel-execution/README.md).
-Add a regression test for every fix and boundary tests for parsing, timeouts,
-retries, TLS behavior, and error handling when those areas change.
+Retry and timeout behavior is centralized in the
+[retry and wait policy contract](docs/retry-wait-policy/README.md). Add a
+regression test for every fix and boundary tests for parsing, timeouts, retries,
+TLS behavior, and error handling when those areas change.
 
 Run the same checks used by CI:
 

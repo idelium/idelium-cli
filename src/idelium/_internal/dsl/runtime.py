@@ -12,6 +12,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 
+from idelium._internal.retry_policy import RetryPolicyError, WaitPolicy
+
 
 REDACTED = "[REDACTED]"
 SUPPORTED_SCHEMA_VERSION = "1.0"
@@ -538,20 +540,16 @@ class DslAstRuntime:
                 "Unsupported DSL wait condition.",
                 node=node,
             )
-        timeout = node.get(
-            "timeoutMilliseconds",
-            self.options.default_wait_timeout_milliseconds,
-        )
-        if (
-            not isinstance(timeout, int)
-            or timeout <= 0
-            or timeout > self.options.max_wait_timeout_milliseconds
-        ):
+        try:
+            self._wait_policy().resolve_timeout_milliseconds(
+                node.get("timeoutMilliseconds")
+            )
+        except RetryPolicyError as error:
             raise DslRuntimeError(
                 "IDELIUM_DSL_RUNTIME_INVALID_TIMEOUT",
-                "DSL wait timeout is outside the allowed execution bounds.",
+                str(error),
                 node=node,
-            )
+            ) from error
 
     def _reject_unknown_keys(
         self,
@@ -693,9 +691,9 @@ class DslAstRuntime:
         }
 
     def _wait(self, node: dict[str, Any]) -> dict[str, Any]:
-        timeout_ms = node.get(
-            "timeoutMilliseconds",
-            self.options.default_wait_timeout_milliseconds,
+        wait_policy = self._wait_policy()
+        timeout_ms = wait_policy.resolve_timeout_milliseconds(
+            node.get("timeoutMilliseconds")
         )
         deadline = self.options.monotonic() + timeout_ms / 1000
         while True:
@@ -711,7 +709,7 @@ class DslAstRuntime:
                     "Timed out waiting for DSL condition.",
                     node=node,
                 )
-            self.options.sleep(self.options.poll_interval_seconds)
+            self.options.sleep(wait_policy.poll_interval_seconds)
 
     def _assert_visibility(self, node: dict[str, Any]) -> dict[str, Any]:
         visible = self._is_visible(node["locator"])
@@ -951,6 +949,13 @@ class DslAstRuntime:
             if secret_value:
                 redacted = redacted.replace(secret_value, REDACTED)
         return redacted
+
+    def _wait_policy(self) -> WaitPolicy:
+        return WaitPolicy(
+            default_timeout_milliseconds=self.options.default_wait_timeout_milliseconds,
+            max_timeout_milliseconds=self.options.max_wait_timeout_milliseconds,
+            poll_interval_seconds=self.options.poll_interval_seconds,
+        )
 
     def _assertion_payload(
         self,

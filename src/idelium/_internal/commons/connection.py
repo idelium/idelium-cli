@@ -8,7 +8,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
-from urllib3.util.retry import Retry
+
+from idelium._internal.retry_policy import RetryPolicy
 
 
 class HttpTransportError(RuntimeError):
@@ -23,7 +24,6 @@ class HttpTransportError(RuntimeError):
 class HttpClient:
     """Apply consistent TLS, timeout, retry, status, and logging behavior."""
 
-    IDEMPOTENT_METHODS = frozenset({"DELETE", "GET", "HEAD", "OPTIONS", "PUT"})
     SENSITIVE_KEYS = {
         "api_key",
         "apikey",
@@ -42,21 +42,13 @@ class HttpClient:
         verify=True,
         timeout=(5, 30),
         retries=2,
+        retry_policy=None,
     ):
         self.session = session or requests.Session()
         self.verify = verify
         self.timeout = timeout
-        retry = Retry(
-            total=retries,
-            connect=retries,
-            read=retries,
-            status=retries,
-            backoff_factor=0.25,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=self.IDEMPOTENT_METHODS,
-            raise_on_status=False,
-        )
-        adapter = HTTPAdapter(max_retries=retry)
+        self.retry_policy = retry_policy or RetryPolicy(total=retries)
+        adapter = HTTPAdapter(max_retries=self.retry_policy.to_urllib3())
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
 
