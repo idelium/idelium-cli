@@ -12,6 +12,7 @@ from idelium._internal.commons.resultenum import Result
 
 def main() -> int:
     request = json.loads(sys.stdin.read() or "{}")
+    _apply_resource_limits()
     plugin_path = Path(request["pluginPath"])
     spec = importlib.util.spec_from_file_location("idelium_approved_plugin", plugin_path)
     if spec is None or spec.loader is None:
@@ -37,6 +38,17 @@ def main() -> int:
 
     print(json.dumps({"result": value}))
     return 0
+
+
+def _apply_resource_limits() -> None:
+    try:
+        import resource
+
+        memory_limit = 256 * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (memory_limit, memory_limit))
+        resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
+    except (ImportError, OSError, ValueError):
+        return
 
 
 if __name__ == "__main__":

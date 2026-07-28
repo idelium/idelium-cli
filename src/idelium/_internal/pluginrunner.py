@@ -7,11 +7,27 @@ import os
 import subprocess
 import sys
 import tempfile
+import ast
 from pathlib import Path
 from typing import Any
 
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.pluginapi import PluginDefinition, redact_plugin_error
+
+DENIED_IMPORT_ROOTS = {
+    "builtins",
+    "ftplib",
+    "glob",
+    "http",
+    "os",
+    "pathlib",
+    "requests",
+    "shutil",
+    "socket",
+    "subprocess",
+    "urllib",
+}
+DENIED_CALLS = {"__import__", "compile", "eval", "exec", "input", "open"}
 
 
 class PluginExecutionError(RuntimeError):
@@ -29,6 +45,7 @@ def execute_plugin_in_subprocess(
         raise PluginExecutionError(
             "Plugin is not approved for subprocess execution or failed integrity checks."
         )
+    _validate_static_policy(definition.source)
 
     with tempfile.TemporaryDirectory(prefix="idelium-plugin-") as tmpdir:
         plugin_path = Path(tmpdir) / f"{definition.name}.py"
@@ -69,6 +86,40 @@ def execute_plugin_in_subprocess(
     if status == "NA":
         return Result.NA
     raise PluginExecutionError("Plugin returned an unsupported result value.")
+
+
+def _validate_static_policy(source: str) -> None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as error:
+        raise PluginExecutionError("Plugin source cannot be parsed.") from error
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                _deny_import(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            _deny_import(node.module or "")
+        elif isinstance(node, ast.Call):
+            call_name = _call_name(node.func)
+            if call_name in DENIED_CALLS:
+                raise PluginExecutionError(
+                    f"Plugin uses disallowed capability: {call_name}."
+                )
+
+
+def _deny_import(module: str) -> None:
+    root = module.split(".", 1)[0]
+    if root in DENIED_IMPORT_ROOTS:
+        raise PluginExecutionError(f"Plugin imports disallowed module: {root}.")
+
+
+def _call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
 
 
 def _safe_environment() -> dict[str, str]:

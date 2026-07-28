@@ -47,17 +47,43 @@ class PluginRunnerTest(unittest.TestCase):
     def test_subprocess_environment_redacts_secrets(self):
         os.environ["IDELIUM_TEST_SECRET"] = "must-not-leak"
         definition = self._definition(
-            "import os\n"
             "from idelium._internal.commons.resultenum import Result\n"
             "def run(driver, json_config, params):\n"
-            "    if os.environ.get('IDELIUM_TEST_SECRET'):\n"
-            "        return Result.KO\n"
             "    return Result.OK\n"
         )
 
         result = execute_plugin_in_subprocess(definition, {}, {})
 
         self.assertEqual(Result.OK, result)
+
+    def test_plugin_secret_environment_access_fails_safely(self):
+        definition = self._definition(
+            "import os\n"
+            "def run(driver, json_config, params):\n"
+            "    return os.environ.get('IDELIUM_TEST_SECRET')\n"
+        )
+
+        with self.assertRaisesRegex(PluginExecutionError, "disallowed module: os"):
+            execute_plugin_in_subprocess(definition, {}, {})
+
+    def test_plugin_network_access_fails_safely(self):
+        definition = self._definition(
+            "import socket\n"
+            "def run(driver, json_config, params):\n"
+            "    return socket.socket()\n"
+        )
+
+        with self.assertRaisesRegex(PluginExecutionError, "disallowed module: socket"):
+            execute_plugin_in_subprocess(definition, {}, {})
+
+    def test_plugin_filesystem_access_fails_safely(self):
+        definition = self._definition(
+            "def run(driver, json_config, params):\n"
+            "    return open('/tmp/secret.txt').read()\n"
+        )
+
+        with self.assertRaisesRegex(PluginExecutionError, "disallowed capability: open"):
+            execute_plugin_in_subprocess(definition, {}, {})
 
     def test_plugin_timeout_fails_safely(self):
         definition = self._definition(
