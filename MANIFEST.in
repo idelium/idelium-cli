@@ -11,6 +11,7 @@ recursive-include docs/parallel-execution *.md
 recursive-include docs/reports *.json *.md
 recursive-include docs/retry-wait-policy *.md
 recursive-include docs/selector-diagnostics *.md
+recursive-include docs/webdriver-adapter *.md
 recursive-include scripts *.sh
 prune .github
 prune docs/build
