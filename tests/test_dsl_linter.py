@@ -85,9 +85,7 @@ test "Lint" {
             )
 
             with patch.object(cli_main.printer, "print_important_text"):
-                exit_code = cli_main.main(
-                    ["idelium", "--dslLint", str(source_path)]
-                )
+                exit_code = cli_main.main(["idelium", "--dslLint", str(source_path)])
 
         self.assertEqual(EXIT_SUCCESS, exit_code)
 

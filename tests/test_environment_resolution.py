@@ -98,7 +98,9 @@ class EnvironmentResolutionTest(unittest.TestCase):
 
         metadata = result.as_dict()
 
-        self.assertEqual("IDELIUM_ENVIRONMENT_SECRET_REFERENCE", metadata["diagnostics"][0]["code"])
+        self.assertEqual(
+            "IDELIUM_ENVIRONMENT_SECRET_REFERENCE", metadata["diagnostics"][0]["code"]
+        )
         self.assertNotIn("super-secret-token", repr(metadata))
 
 

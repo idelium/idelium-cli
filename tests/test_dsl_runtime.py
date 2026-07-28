@@ -212,7 +212,9 @@ test "Runtime smoke" {
         self.assertNotIn("super-secret", serialized)
         self.assertIn("[REDACTED]", serialized)
 
-    def test_external_variables_are_interpolated_and_local_variables_take_precedence(self):
+    def test_external_variables_are_interpolated_and_local_variables_take_precedence(
+        self,
+    ):
         ast = parse_source(
             'idelium 1.0\n\ntest "Variables" {\n'
             '    open "${baseUrl}/from-external"\n'
@@ -239,7 +241,9 @@ test "Runtime smoke" {
             driver.calls,
         )
 
-    def test_missing_interpolation_variable_fails_without_echoing_placeholder_value(self):
+    def test_missing_interpolation_variable_fails_without_echoing_placeholder_value(
+        self,
+    ):
         ast = parse_source(
             'idelium 1.0\n\ntest "Missing" {\n'
             '    open "https://example.invalid/${missingSecret}"\n'
@@ -276,7 +280,7 @@ test "Runtime smoke" {
         ast = parse_source(
             'idelium 1.0\n\ntest "Control" {\n'
             '    if visible css "#ready" {\n'
-            '        repeat 2 times {\n'
+            "        repeat 2 times {\n"
             '            click css ".retry"\n'
             "        }\n"
             "    }\n"
@@ -333,10 +337,12 @@ test "Runtime smoke" {
         self.assertEqual("IDELIUM_DSL_RUNTIME_LOOP_BOUND_EXCEEDED", diagnostic["code"])
         self.assertEqual([], driver.calls)
 
-    def test_nested_failure_fails_outer_control_statement_and_skips_following_nodes(self):
+    def test_nested_failure_fails_outer_control_statement_and_skips_following_nodes(
+        self,
+    ):
         ast = parse_source(
             'idelium 1.0\n\ntest "Nested failure" {\n'
-            '    repeat 2 times {\n'
+            "    repeat 2 times {\n"
             '        click css ".missing"\n'
             "    }\n"
             '    open "https://example.invalid/after"\n'
@@ -356,7 +362,7 @@ test "Runtime smoke" {
 
     def test_reusable_step_executes_with_parameters_and_isolated_scope(self):
         ast = parse_source(
-            'idelium 1.0\n\n'
+            "idelium 1.0\n\n"
             "step fillField(selector, value) {\n"
             '    write css "${selector}" value "${value}"\n'
             '    let selector = "#internal"\n'
@@ -382,7 +388,7 @@ test "Runtime smoke" {
 
     def test_reusable_step_secret_arguments_are_redacted(self):
         ast = parse_source(
-            'idelium 1.0\n\n'
+            "idelium 1.0\n\n"
             "step fillPassword(value) {\n"
             '    write css "#password" value "${value}"\n'
             "}\n\n"
@@ -418,7 +424,7 @@ test "Runtime smoke" {
 
     def test_reusable_step_expansion_limit_blocks_recursion(self):
         ast = parse_source(
-            'idelium 1.0\n\nstep again() { use again() }\n\n'
+            "idelium 1.0\n\nstep again() { use again() }\n\n"
             'test "Recursive" { use again() }\n'
         )
 
@@ -434,7 +440,9 @@ test "Runtime smoke" {
         deepest_call = nested_call["output"]["statements"][0]
         diagnostic = deepest_call["diagnostics"][0]
         self.assertEqual("failed", outer_call["status"])
-        self.assertEqual("IDELIUM_DSL_RUNTIME_MACRO_EXPANSION_LIMIT", diagnostic["code"])
+        self.assertEqual(
+            "IDELIUM_DSL_RUNTIME_MACRO_EXPANSION_LIMIT", diagnostic["code"]
+        )
 
     def test_advanced_assertions_return_versioned_contract_payloads(self):
         ast = parse_source(

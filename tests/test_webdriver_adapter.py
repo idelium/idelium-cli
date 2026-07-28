@@ -21,7 +21,9 @@ class WebDriverAdapterTest(unittest.TestCase):
     def test_build_locator_normalizes_supported_strategies(self):
         locator = build_locator("css", "[data-testid='save']")
 
-        self.assertEqual((By.CSS_SELECTOR, "[data-testid='save']"), locator.as_selenium())
+        self.assertEqual(
+            (By.CSS_SELECTOR, "[data-testid='save']"), locator.as_selenium()
+        )
 
     def test_build_locator_rejects_unsupported_strategy(self):
         with self.assertRaises(WebDriverContractError):

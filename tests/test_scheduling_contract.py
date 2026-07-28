@@ -42,11 +42,15 @@ class SchedulingContractTest(unittest.TestCase):
         self.assertEqual("parallel", schedule["mode"])
         self.assertEqual(2, schedule["requestedWorkers"])
         self.assertEqual(2, schedule["maxWorkers"])
-        self.assertEqual("input-order-dispatch-with-stable-tie-break", schedule["ordering"])
+        self.assertEqual(
+            "input-order-dispatch-with-stable-tie-break", schedule["ordering"]
+        )
         self.assertEqual("input-order", schedule["resultOrdering"])
         self.assertIn("tenant", schedule["isolation"])
         self.assertIn("credentials", schedule["isolation"])
-        self.assertEqual(["10", "11", "12"], [item["testId"] for item in schedule["items"]])
+        self.assertEqual(
+            ["10", "11", "12"], [item["testId"] for item in schedule["items"]]
+        )
 
     def test_worker_count_is_bounded_by_available_work(self):
         schedule = build_execution_schedule([{"id": 10}], workers=8).as_dict()

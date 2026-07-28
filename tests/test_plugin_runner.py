@@ -82,7 +82,9 @@ class PluginRunnerTest(unittest.TestCase):
             "    return open('/tmp/secret.txt').read()\n"
         )
 
-        with self.assertRaisesRegex(PluginExecutionError, "disallowed capability: open"):
+        with self.assertRaisesRegex(
+            PluginExecutionError, "disallowed capability: open"
+        ):
             execute_plugin_in_subprocess(definition, {}, {})
 
     def test_plugin_timeout_fails_safely(self):

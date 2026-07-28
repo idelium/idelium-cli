@@ -9,7 +9,12 @@ from pathlib import Path
 
 from selenium.webdriver.common.by import By
 
-from idelium._internal.dsl import DslSyntaxError, DslRuntimeOptions, execute_ast, parse_source
+from idelium._internal.dsl import (
+    DslSyntaxError,
+    DslRuntimeOptions,
+    execute_ast,
+    parse_source,
+)
 from idelium._internal.dsl.linter import lint_source
 from tests.test_dsl_runtime import FakeDriver, FakeElement
 
@@ -87,12 +92,10 @@ class DslLegacyCompatibilityTest(unittest.TestCase):
                 '    open "https://user:secret@example.invalid"\n}\n'
             ),
             "path screenshot": (
-                'idelium 1.0\n\ntest "T" {\n'
-                '    screenshot "../secret"\n}\n'
+                'idelium 1.0\n\ntest "T" {\n    screenshot "../secret"\n}\n'
             ),
             "uppercase keyword": (
-                'idelium 1.0\n\ntest "T" {\n'
-                '    Open "https://example.invalid"\n}\n'
+                'idelium 1.0\n\ntest "T" {\n    Open "https://example.invalid"\n}\n'
             ),
         }
 
@@ -102,7 +105,9 @@ class DslLegacyCompatibilityTest(unittest.TestCase):
                     parse_source(source)
                 lint_result = lint_source(source)
                 self.assertEqual("failed", lint_result["status"])
-                self.assertEqual("IDL-LINT-SYNTAX", lint_result["diagnostics"][0]["ruleId"])
+                self.assertEqual(
+                    "IDL-LINT-SYNTAX", lint_result["diagnostics"][0]["ruleId"]
+                )
 
 
 if __name__ == "__main__":
