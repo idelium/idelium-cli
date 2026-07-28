@@ -6,30 +6,38 @@ from idelium._internal.pluginapi import (
     LEGACY_PLUGIN_API_VERSION,
     PLUGIN_STEP_CAPABILITY,
     SUPPORTED_PLUGIN_API_VERSION,
+    ENTERPRISE_PLUGIN_API_VERSION,
     PluginContractError,
     PluginRegistry,
     normalize_plugin_payload,
     redact_plugin_error,
+    source_hash,
 )
 
 
 class PluginApiTest(unittest.TestCase):
     def test_explicit_manifest_declares_version_and_capability(self):
+        source = "def run(driver, json_config, params):\n    return 1\n"
         definition = normalize_plugin_payload(
             "custom_step",
             {
-                "apiVersion": SUPPORTED_PLUGIN_API_VERSION,
+                "apiVersion": ENTERPRISE_PLUGIN_API_VERSION,
                 "capabilities": [PLUGIN_STEP_CAPABILITY],
                 "entrypoint": "run",
-                "source": "def run(driver, json_config, params):\n    return 1\n",
+                "source": source,
+                "approvalStatus": "approved",
+                "sourceSha256": source_hash(source),
+                "executionMode": "subprocess",
+                "provenance": {"reviewedBy": "security@example.test"},
             },
         )
 
         self.assertEqual("custom_step", definition.name)
-        self.assertEqual(SUPPORTED_PLUGIN_API_VERSION, definition.api_version)
+        self.assertEqual(ENTERPRISE_PLUGIN_API_VERSION, definition.api_version)
         self.assertEqual((PLUGIN_STEP_CAPABILITY,), definition.capabilities)
         self.assertEqual("run", definition.entrypoint)
         self.assertFalse(definition.legacy)
+        self.assertTrue(definition.approved_for_execution())
 
     def test_legacy_payload_is_normalized_for_compatibility(self):
         definition = normalize_plugin_payload(
@@ -59,6 +67,31 @@ class PluginApiTest(unittest.TestCase):
                     "apiVersion": "idelium-plugin/2.0",
                     "capabilities": [PLUGIN_STEP_CAPABILITY],
                     "source": "def init(driver, json_config, params): pass",
+                },
+            ),
+            "missing approval": (
+                "step",
+                {
+                    "apiVersion": ENTERPRISE_PLUGIN_API_VERSION,
+                    "capabilities": [PLUGIN_STEP_CAPABILITY],
+                    "source": "def init(driver, json_config, params): pass",
+                    "sourceSha256": source_hash(
+                        "def init(driver, json_config, params): pass"
+                    ),
+                    "executionMode": "subprocess",
+                    "provenance": {"reviewedBy": "security@example.test"},
+                },
+            ),
+            "integrity mismatch": (
+                "step",
+                {
+                    "apiVersion": ENTERPRISE_PLUGIN_API_VERSION,
+                    "capabilities": [PLUGIN_STEP_CAPABILITY],
+                    "source": "def init(driver, json_config, params): pass",
+                    "approvalStatus": "approved",
+                    "sourceSha256": "0" * 64,
+                    "executionMode": "subprocess",
+                    "provenance": {"reviewedBy": "security@example.test"},
                 },
             ),
             "bad entrypoint": (

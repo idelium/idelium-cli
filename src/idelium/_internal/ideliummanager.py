@@ -2,7 +2,6 @@
 
 from __future__ import absolute_import
 import sys
-import importlib.util
 import shutil
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.pluginapi import (
@@ -10,6 +9,7 @@ from idelium._internal.pluginapi import (
     PluginRegistry,
     redact_plugin_error,
 )
+from idelium._internal.pluginrunner import execute_plugin_in_subprocess
 from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
 from idelium._internal.wrappers.ideliumappium import IdeliumAppium
 from idelium._internal.thirdparties.ideliumpostman import (
@@ -231,12 +231,10 @@ class StartManager:
                     step_failed = object_step
                     continue
                 try:
-                    module = importlib.import_module(
-                        "plugin." + object_step["stepType"], package=__package__
-                    )
-                    entrypoint = getattr(module, plugin_definition.entrypoint)
                     params = object_step.get("params", None)
-                    plugin_response = entrypoint(driver, config["json_config"], params)
+                    plugin_response = execute_plugin_in_subprocess(
+                        plugin_definition, config["json_config"], params
+                    )
                     if plugin_response == Result.KO:
                         status = "2"
                         print(

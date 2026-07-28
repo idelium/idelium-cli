@@ -6,8 +6,9 @@ from unittest.mock import Mock, patch
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.ideliummanager import StartManager
 from idelium._internal.pluginapi import (
+    ENTERPRISE_PLUGIN_API_VERSION,
     PLUGIN_STEP_CAPABILITY,
-    SUPPORTED_PLUGIN_API_VERSION,
+    source_hash,
 )
 
 
@@ -25,52 +26,59 @@ class PluginDispatchTest(unittest.TestCase):
             "ideliumServer": True,
         }
 
-    @patch("idelium._internal.ideliummanager.importlib.import_module")
-    def test_unregistered_plugin_step_fails_without_import(self, import_module):
+    @patch("idelium._internal.ideliummanager.execute_plugin_in_subprocess")
+    def test_unregistered_plugin_step_fails_without_import(self, execute_plugin):
         step = {"stepType": "missing_plugin", "params": {}}
 
         result = StartManager.execute_step(None, self._config(step))
 
         self.assertEqual("2", result["status"])
         self.assertEqual(step, result["step_failed"])
-        import_module.assert_not_called()
+        execute_plugin.assert_not_called()
 
-    @patch("idelium._internal.ideliummanager.importlib.import_module")
-    def test_registered_plugin_uses_declared_entrypoint(self, import_module):
-        module = Mock()
-        module.run.return_value = Result.OK
-        import_module.return_value = module
+    @patch("idelium._internal.ideliummanager.execute_plugin_in_subprocess")
+    def test_registered_plugin_uses_declared_entrypoint(self, execute_plugin):
+        execute_plugin.return_value = Result.OK
         step = {"stepType": "custom_step", "params": {"value": "ok"}}
+        source = "def run(driver, json_config, params): return 1"
         plugins = {
             "custom_step": {
-                "apiVersion": SUPPORTED_PLUGIN_API_VERSION,
+                "apiVersion": ENTERPRISE_PLUGIN_API_VERSION,
                 "capabilities": [PLUGIN_STEP_CAPABILITY],
                 "entrypoint": "run",
-                "source": "def run(driver, json_config, params): return 1",
+                "source": source,
+                "approvalStatus": "approved",
+                "sourceSha256": source_hash(source),
+                "executionMode": "subprocess",
+                "provenance": {"reviewedBy": "security@example.test"},
             }
         }
 
         result = StartManager.execute_step("driver", self._config(step, plugins))
 
         self.assertEqual("1", result["status"])
-        import_module.assert_called_once_with(
-            "plugin.custom_step", package="idelium._internal"
-        )
-        module.run.assert_called_once_with("driver", {}, {"value": "ok"})
+        execute_plugin.assert_called_once()
+        definition, json_config, params = execute_plugin.call_args.args
+        self.assertEqual("custom_step", definition.name)
+        self.assertEqual({}, json_config)
+        self.assertEqual({"value": "ok"}, params)
 
-    @patch("idelium._internal.ideliummanager.importlib.import_module")
-    def test_plugin_exception_is_isolated_and_redacted(self, import_module):
-        module = Mock()
-        module.init.side_effect = RuntimeError("token abc password=hunter2")
-        import_module.return_value = module
+    @patch("idelium._internal.ideliummanager.execute_plugin_in_subprocess")
+    def test_plugin_exception_is_isolated_and_redacted(self, execute_plugin):
+        execute_plugin.side_effect = RuntimeError("token abc password=hunter2")
         step = {"stepType": "custom_step", "params": {}}
+        source = "def init(driver, json_config, params): return 1"
         config = self._config(
             step,
             {
                 "custom_step": {
-                    "apiVersion": SUPPORTED_PLUGIN_API_VERSION,
+                    "apiVersion": ENTERPRISE_PLUGIN_API_VERSION,
                     "capabilities": [PLUGIN_STEP_CAPABILITY],
-                    "source": "def init(driver, json_config, params): return 1",
+                    "source": source,
+                    "approvalStatus": "approved",
+                    "sourceSha256": source_hash(source),
+                    "executionMode": "subprocess",
+                    "provenance": {"reviewedBy": "security@example.test"},
                 }
             },
         )
