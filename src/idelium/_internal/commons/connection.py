@@ -98,7 +98,11 @@ class HttpClient:
             ) from error
         except requests.RequestException as error:
             raise HttpTransportError(
-                "{} request failed for {}".format(method, self.redact_url(url))
+                "{} request failed for {}: {}".format(
+                    method,
+                    self.redact_url(url),
+                    self._transport_error_hint(error),
+                )
             ) from error
 
         if debug:
@@ -136,6 +140,18 @@ class HttpClient:
                     response.status_code,
                 )
             ) from error
+
+    @staticmethod
+    def _transport_error_hint(error):
+        if isinstance(error, requests.exceptions.ConnectTimeout):
+            return "connection timed out before the server accepted the request"
+        if isinstance(error, requests.exceptions.ReadTimeout):
+            return "server did not send a response before the read timeout"
+        if isinstance(error, requests.exceptions.ConnectionError):
+            return "connection error; verify that the Idelium API is running and reachable"
+        if isinstance(error, requests.exceptions.TooManyRedirects):
+            return "too many redirects"
+        return error.__class__.__name__
 
 
 class Connection:

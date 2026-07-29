@@ -88,6 +88,22 @@ class HttpTransportTest(unittest.TestCase):
         self.assertIn("--insecure", message)
         self.assertNotIn("Traceback", message)
 
+    def test_connection_failures_return_actionable_error_without_trace_details(self):
+        session = Mock()
+        session.request.side_effect = requests.exceptions.ConnectionError(
+            "connection refused on internal socket"
+        )
+        client = HttpClient(session=session)
+
+        with self.assertRaises(HttpTransportError) as transport_error:
+            client.request("GET", "https://localhost/api/ideliumcl/testcycle/5")
+
+        message = str(transport_error.exception)
+        self.assertIn("connection error", message)
+        self.assertIn("Idelium API is running and reachable", message)
+        self.assertNotIn("internal socket", message)
+        self.assertNotIn("Traceback", message)
+
     def test_retries_are_bounded_and_only_allow_idempotent_methods(self):
         session = Mock()
         HttpClient(session=session, retries=2)
