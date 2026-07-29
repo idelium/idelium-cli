@@ -194,7 +194,20 @@ class IdeliumWs:
         printer = config["printer"]
         configuration_step = {}
         configuration_directories = self.create_directories(config)
-        object_cycle = self.get_cycles(config)
+        try:
+            object_cycle = self.get_cycles(config)
+        except HttpTransportError as error:
+            if getattr(error, "status_code", None) == 404:
+                raise HttpTransportError(
+                    "Remote test cycle configuration is inconsistent: "
+                    f"test cycle {config['idCycle']} was not found for the "
+                    "provided Idelium key. Use the test cycle ID, not the "
+                    f"imported test ID, and verify project {config['idProject']}. "
+                    f"{error}",
+                    status_code=error.status_code,
+                    url=error.url,
+                ) from error
+            raise
         if object_cycle == -1:
             printer.danger("The id_cycle " + str(config["idCycle"]) + " not exist")
             if config["ideliumServer"] is False:

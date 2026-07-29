@@ -77,6 +77,41 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             "test cycle 3 contains no executable tests."
         )
 
+    def test_missing_cycle_explains_cycle_id_not_imported_test_id(self):
+        web_service = IdeliumWs()
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "5",
+            "idProject": "1",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "local": False,
+            "forcedownload": False,
+            "ideliumServer": False,
+            "dir_idelium_scripts": "/tmp/idelium-test",
+            "printer": Mock(),
+        }
+
+        with (
+            patch.object(web_service, "create_directories", return_value=[""] * 7),
+            patch.object(
+                web_service,
+                "get_cycles",
+                side_effect=HttpTransportError(
+                    "GET request returned HTTP 404 for "
+                    "https://localhost/api/ideliumcl/testcycle/5",
+                    status_code=404,
+                ),
+            ),
+        ):
+            with self.assertRaises(HttpTransportError) as raised:
+                web_service.get_configuration(config)
+
+        message = str(raised.exception)
+        self.assertIn("test cycle 5 was not found", message)
+        self.assertIn("Use the test cycle ID, not the imported test ID", message)
+        self.assertIn("verify project 1", message)
+
     def test_missing_referenced_step_returns_configuration_context(self):
         web_service = IdeliumWs()
         config = {
