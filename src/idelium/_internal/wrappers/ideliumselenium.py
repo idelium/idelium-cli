@@ -6,7 +6,10 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    WebDriverException,
+)
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
@@ -289,7 +292,7 @@ class IdeliumSelenium:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
             element = IdeliumSelenium._find_step_element(driver, object_step)
-            element.click()
+            IdeliumSelenium._click_element(driver, element)
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
@@ -577,13 +580,35 @@ class IdeliumSelenium:
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            self._find_step_element(driver, object_step).click()
+            element = self._find_step_element(driver, object_step)
+            self._click_element(driver, element)
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             return self._error_result(err)
+
+    @staticmethod
+    def _click_element(driver, element):
+        """Scroll the element to a stable viewport position before clicking."""
+
+        IdeliumSelenium._scroll_element_into_view(driver, element)
+        try:
+            element.click()
+        except ElementClickInterceptedException:
+            IdeliumSelenium._scroll_element_into_view(driver, element)
+            ActionChains(driver).move_to_element(element).click(element).perform()
+
+    @staticmethod
+    def _scroll_element_into_view(driver, element):
+        try:
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                element,
+            )
+        except WebDriverException:
+            return
 
     def select(self, driver, config, object_step):
         """select"""
