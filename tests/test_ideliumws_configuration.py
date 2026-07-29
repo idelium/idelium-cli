@@ -306,6 +306,12 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
                     "name": "postman",
                     "attachScreenshot": False,
                     "failedExit": False,
+                },
+                "should-not-run_18": {
+                    "name": "should-not-run",
+                    "type": "selenium",
+                    "attachScreenshot": False,
+                    "failedExit": False,
                 }
             }
         }
@@ -405,8 +411,16 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             exit_code = web_service.start_test(idelium, test_configurations, config)
 
         self.assertEqual(EXIT_TEST_FAILURE, exit_code)
-        create_step.assert_called_once()
-        self.assertEqual("2", create_step.call_args.args[5])
+        self.assertEqual(2, create_step.call_count)
+        self.assertEqual("2", create_step.call_args_list[0].args[5])
+        self.assertEqual(18, create_step.call_args_list[1].args[3])
+        self.assertEqual("should-not-run", create_step.call_args_list[1].args[4])
+        self.assertEqual("5", create_step.call_args_list[1].args[5])
+        self.assertEqual("seleniumOrAppium", create_step.call_args_list[1].args[7])
+        self.assertEqual(
+            "Step skipped because a previous required step failed.",
+            create_step.call_args_list[1].args[6]["diagnostics"][0]["message"],
+        )
         update_test.assert_called_once_with(config, 91, 2, postman_data)
         idelium.execute_step.assert_called_once()
         printer.danger.assert_called_with(

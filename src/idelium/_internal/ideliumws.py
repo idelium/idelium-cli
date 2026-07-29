@@ -98,6 +98,45 @@ class IdeliumWs:
         )
 
     @staticmethod
+    def skipped_step_result(step_id, step_name, typeofstep, reason):
+        """Build a safe skipped-step payload for remote result visibility."""
+        return {
+            "runtime": typeofstep,
+            "schemaVersion": "performed-step-result.v1",
+            "summary": {
+                "status": "skipped",
+                "stepId": step_id,
+                "stepName": step_name,
+            },
+            "durationMilliseconds": 0,
+            "diagnostics": [
+                {
+                    "level": "warning",
+                    "message": reason,
+                }
+            ],
+            "artifacts": [],
+            "postmanResults": [],
+        }
+
+    @staticmethod
+    def step_runtime(json_step):
+        """Return the persisted runtime accepted by the Idelium API."""
+        raw_runtime = (
+            json_step.get("type")
+            or json_step.get("runtime")
+            or json_step.get("stepType")
+            or json_step.get("wrapper")
+            or "seleniumOrAppium"
+        )
+        runtime = str(raw_runtime)
+        if runtime == "selenium":
+            return "selenium"
+        if runtime == "postman":
+            return "postman"
+        return "seleniumOrAppium"
+
+    @staticmethod
     def update_step(config, id_step, screenshots):
         """update step"""
         url = config["api_idelium"] + "step"
@@ -479,17 +518,42 @@ class IdeliumWs:
                         )
                     )
                 else:
+                    json_step = test_configurations["steps"].get(
+                        test["name"] + "_" + str(test["id"]),
+                        {"name": test["name"]},
+                    )
+                    skipped_reason = (
+                        "Step skipped because a previous required step failed."
+                    )
+                    typeofstep = self.step_runtime(json_step)
+                    skipped_payload = self.skipped_step_result(
+                        test["id"],
+                        json_step.get("name", test["name"]),
+                        typeofstep,
+                        skipped_reason,
+                    )
+                    if config["test"] is False:
+                        self.create_step(
+                            config,
+                            id_cycle,
+                            id_test,
+                            test["id"],
+                            json_step.get("name", test["name"]),
+                            "5",
+                            skipped_payload,
+                            typeofstep,
+                        )
                     report_test["steps"].append(
                         {
                             "id": test["id"],
-                            "name": test["name"],
-                            "type": "skipped",
+                            "name": json_step.get("name", test["name"]),
+                            "type": typeofstep,
                             "status": "5",
                             "durationMilliseconds": 0,
                             "diagnostics": [
                                 {
                                     "level": "warning",
-                                    "message": "Step skipped because a previous required step failed.",
+                                    "message": skipped_reason,
                                 }
                             ],
                             "artifacts": [],
