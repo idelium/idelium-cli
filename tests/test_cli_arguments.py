@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from idelium._internal.ideliumclib import InitIdelium
@@ -63,6 +65,36 @@ class CliArgumentParsingTest(unittest.TestCase):
         )
 
         self.assertTrue(defined["cl_params"]["test"])
+
+    def test_reads_protected_key_file_without_trailing_newline(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        with tempfile.TemporaryDirectory() as directory:
+            key_file = Path(directory) / ".idelium"
+            key_file.write_text("key==\n", encoding="utf-8")
+
+            with patch(
+                "idelium._internal.ideliumclib.Path.home",
+                return_value=Path(directory),
+            ):
+                defined = loader.define_parameters(
+                    [
+                        "idelium",
+                        "--idProject",
+                        "1",
+                        "--idCycle",
+                        "2",
+                        "--environment",
+                        "demo",
+                        "--ideliumwsBaseurl",
+                        "https://localhost",
+                    ],
+                    Mock(),
+                    printer,
+                )
+
+        self.assertEqual("key==", defined["cl_params"]["ideliumKey"])
 
     def test_accepts_local_report_output_paths(self):
         loader = InitIdelium()

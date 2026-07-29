@@ -72,6 +72,20 @@ class HttpTransportTest(unittest.TestCase):
             client.request("GET", "https://example.test")
         self.assertNotIn("secret failure body", str(http_error.exception))
 
+    def test_unauthorized_response_explains_idelium_key_remediation(self):
+        session = Mock()
+        session.request.return_value = self.response(401, "secret failure body")
+        client = HttpClient(session=session)
+
+        with self.assertRaises(HttpTransportError) as http_error:
+            client.request("GET", "https://localhost/api/ideliumcl/testcycle/5")
+
+        message = str(http_error.exception)
+        self.assertIn("HTTP 401", message)
+        self.assertIn("--ideliumKey", message)
+        self.assertIn("~/.idelium", message)
+        self.assertNotIn("secret failure body", message)
+
     def test_tls_failures_return_actionable_error_without_trace_details(self):
         session = Mock()
         session.request.side_effect = requests.exceptions.SSLError(

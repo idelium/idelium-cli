@@ -261,8 +261,8 @@ class InitIdelium:
             if cl_params["ideliumKey"] is None:
                 file_idelium_key = str(Path.home()) + "/.idelium"
                 if Path(file_idelium_key).is_file() is True:
-                    file = open(file_idelium_key, "r")
-                    cl_params["ideliumKey"] = file.read()
+                    with open(file_idelium_key, "r", encoding="utf-8") as file:
+                        cl_params["ideliumKey"] = file.read().strip()
                 else:
                     print(self.get_syntax())
                     printer.danger("ideliumKey is not setted !")

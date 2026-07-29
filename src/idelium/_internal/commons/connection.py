@@ -115,10 +115,11 @@ class HttpClient:
             )
         if raise_for_status and not 200 <= response.status_code < 300:
             raise HttpTransportError(
-                "{} request returned HTTP {} for {}".format(
+                "{} request returned HTTP {} for {}{}".format(
                     method,
                     response.status_code,
                     self.redact_url(url),
+                    self._http_status_hint(response.status_code),
                 ),
                 status_code=response.status_code,
                 url=self.redact_url(url),
@@ -152,6 +153,17 @@ class HttpClient:
         if isinstance(error, requests.exceptions.TooManyRedirects):
             return "too many redirects"
         return error.__class__.__name__
+
+    @staticmethod
+    def _http_status_hint(status_code):
+        if status_code == 401:
+            return (
+                ": authentication failed; verify --ideliumKey or the ~/.idelium "
+                "file for the intended customer"
+            )
+        if status_code == 403:
+            return ": authorization failed; verify tenant and project permissions"
+        return ""
 
 
 class Connection:
