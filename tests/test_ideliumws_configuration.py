@@ -113,6 +113,46 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         self.assertIn("Remote test cycle configuration is inconsistent", message)
         self.assertIn("test cycle 1 references missing step 2", message)
 
+    def test_server_error_for_referenced_test_returns_api_failure_context(self):
+        web_service = IdeliumWs()
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "5",
+            "idProject": "1",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "local": False,
+            "forcedownload": False,
+            "ideliumServer": False,
+            "dir_idelium_scripts": "/tmp/idelium-test",
+            "printer": Mock(),
+        }
+
+        with (
+            patch.object(web_service, "create_directories", return_value=[""] * 7),
+            patch.object(web_service, "get_cycles", return_value=[{"id": 2}]),
+            patch.object(
+                web_service,
+                "get_tests",
+                side_effect=HttpTransportError(
+                    "GET request returned HTTP 500 for "
+                    "https://localhost/api/ideliumcl/test/2",
+                    status_code=500,
+                ),
+            ),
+        ):
+            with self.assertRaises(HttpTransportError) as raised:
+                web_service.get_configuration(config)
+
+        message = str(raised.exception)
+        self.assertIn("Remote test cycle configuration is inconsistent", message)
+        self.assertIn(
+            "test cycle 5 could not load referenced test 2; "
+            "the Idelium API returned an unexpected response",
+            message,
+        )
+        self.assertNotIn("references missing test 2", message)
+
     def test_result_creation_uses_performed_cycle_and_source_resource_ids(self):
         config = {
             "api_idelium": "https://localhost/api/ideliumcl/",

@@ -210,25 +210,21 @@ class IdeliumWs:
             try:
                 object_test = self.get_tests(config, cycle["id"])
             except HttpTransportError as error:
-                raise HttpTransportError(
-                    "Remote test cycle configuration is inconsistent: "
-                    "test cycle {} references missing test {}. {}".format(
-                        config["idCycle"],
-                        cycle["id"],
-                        error,
-                    )
+                raise self._referenced_asset_error(
+                    config["idCycle"],
+                    "test",
+                    cycle["id"],
+                    error,
                 ) from error
             for test in object_test:
                 try:
                     step = self.get_step(config, test["id"])
                 except HttpTransportError as error:
-                    raise HttpTransportError(
-                        "Remote test cycle configuration is inconsistent: "
-                        "test cycle {} references missing step {}. {}".format(
-                            config["idCycle"],
-                            test["id"],
-                            error,
-                        )
+                    raise self._referenced_asset_error(
+                        config["idCycle"],
+                        "step",
+                        test["id"],
+                        error,
                     ) from error
                 # write step
                 array_steps[step["step_json_name"]] = step["objectStep"]
@@ -319,6 +315,22 @@ class IdeliumWs:
             "config_stepDir": configuration_directories[TypeDir.CONFIGURATIONSTEP_DIR],
             "id_cycleDir": configuration_directories[TypeDir.IDCYCLE_DIR],
         }
+
+    @staticmethod
+    def _referenced_asset_error(id_cycle, asset_type, asset_id, error):
+        if getattr(error, "status_code", None) == 404:
+            reason = f"references missing {asset_type} {asset_id}"
+        else:
+            reason = (
+                f"could not load referenced {asset_type} {asset_id}; "
+                "the Idelium API returned an unexpected response"
+            )
+        return HttpTransportError(
+            "Remote test cycle configuration is inconsistent: "
+            f"test cycle {id_cycle} {reason}. {error}",
+            status_code=getattr(error, "status_code", None),
+            url=getattr(error, "url", None),
+        )
 
     def start_test(self, idelium, test_configurations, config):
         """start test"""
