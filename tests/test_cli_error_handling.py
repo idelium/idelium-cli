@@ -75,7 +75,7 @@ class CliErrorHandlingTest(unittest.TestCase):
 
         self.assertEqual(EXIT_SUCCESS, exit_code)
 
-    def test_internal_errors_return_internal_exit_code_without_details(self):
+    def test_internal_errors_return_internal_exit_code_with_redacted_details(self):
         with (
             patch.object(
                 cli_main.idelium_cl_lib,
@@ -93,7 +93,17 @@ class CliErrorHandlingTest(unittest.TestCase):
             exit_code = cli_main.main(["idelium"])
 
         self.assertEqual(EXIT_INTERNAL_ERROR, exit_code)
-        danger.assert_called_once_with("Unexpected internal CLI error.")
+        danger.assert_called_once_with(
+            "Unexpected internal CLI error: RuntimeError: token=[REDACTED]"
+        )
+
+    def test_internal_error_formatter_falls_back_to_exception_type(self):
+        error = RuntimeError()
+
+        self.assertEqual(
+            "Unexpected internal CLI error: RuntimeError: RuntimeError",
+            cli_main.format_unexpected_error(error),
+        )
 
 
 if __name__ == "__main__":

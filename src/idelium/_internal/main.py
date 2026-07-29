@@ -4,6 +4,7 @@ from __future__ import absolute_import
 import sys
 import ssl
 import os
+import re
 import warnings
 from typing import List, Optional
 
@@ -31,6 +32,19 @@ printer = InitPrinter()
 ideliumws = IdeliumWs()
 idelium_cl_lib = InitIdelium()
 IDELIUM_VERSION = "1.0.14"
+_SENSITIVE_ERROR_PATTERNS = (
+    re.compile(r"(?i)(authorization|cookie|key|password|secret|session|token)=\S+"),
+    re.compile(r"(?i)(authorization|cookie|key|password|secret|session|token):\S+"),
+)
+
+
+def format_unexpected_error(error: Exception) -> str:
+    """Return a safe diagnostic for unexpected CLI failures."""
+
+    message = str(error).strip() or error.__class__.__name__
+    for pattern in _SENSITIVE_ERROR_PATTERNS:
+        message = pattern.sub(lambda match: match.group(1) + "=[REDACTED]", message)
+    return f"Unexpected internal CLI error: {error.__class__.__name__}: {message}"
 
 
 def start_server(cl_params):
@@ -103,7 +117,7 @@ def main(args: Optional[List[str]] = None) -> int:
     except HttpTransportError as error:
         printer.danger(str(error))
         return EXIT_CONNECTIVITY_ERROR
-    except Exception:
-        printer.danger("Unexpected internal CLI error.")
+    except Exception as error:
+        printer.danger(format_unexpected_error(error))
         return EXIT_INTERNAL_ERROR
     return EXIT_SUCCESS
