@@ -646,13 +646,26 @@ class IdeliumSelenium:
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            self._find_step_element(driver, object_step).clear()
+            element = self._find_step_element(driver, object_step)
+            element.clear()
+            self._dispatch_input_events(driver, element)
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
             print(err)
             return self._error_result(err)
+
+    @staticmethod
+    def _dispatch_input_events(driver, element):
+        try:
+            driver.execute_script(
+                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));"
+                "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                element,
+            )
+        except WebDriverException:
+            return
 
     def send_keys(self, driver, config, object_step):
         """send keys"""

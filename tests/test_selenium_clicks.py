@@ -10,6 +10,30 @@ from idelium._internal.wrappers.ideliumselenium import IdeliumSelenium
 
 
 class SeleniumClicksTest(unittest.TestCase):
+    def test_clear_dispatches_input_and_change_events_for_reactive_apps(self):
+        driver = Mock()
+        element = Mock()
+        driver.find_element.return_value = element
+        wrapper = IdeliumSelenium()
+
+        result = wrapper.clear(
+            driver,
+            {},
+            {
+                "note": "Clear the table search before validating every row",
+                "findBy": "css",
+                "target": "[data-testid='table-search']",
+            },
+        )
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        element.clear.assert_called_once_with()
+        driver.execute_script.assert_called_once_with(
+            "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));"
+            "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+            element,
+        )
+
     def test_click_scrolls_element_into_center_before_clicking(self):
         driver = Mock()
         element = Mock()
