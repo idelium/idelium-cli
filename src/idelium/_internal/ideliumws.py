@@ -20,6 +20,7 @@ from idelium._internal.exitcodes import (
     EXIT_DEPENDENCY_ERROR,
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
+    EXIT_VALIDATION_ERROR,
 )
 from idelium._internal.pluginapi import normalize_plugin_payload
 from idelium._internal.webdriver_adapter import W3CWebDriverAdapter
@@ -323,19 +324,41 @@ class IdeliumWs:
         """start test"""
         exit_code = EXIT_SUCCESS
         report_events = []
+        printer = config["printer"]
         if config["ideliumServer"] is True:
             Path(config["dir_idelium_scripts"] + "server").touch()
         wrapper = idelium.get_wrapper(config)
         object_cycle = self.get_cycles(config)
+        if not object_cycle:
+            printer.danger(
+                "Remote test cycle configuration is inconsistent: "
+                f"test cycle {config['idCycle']} contains no executable tests."
+            )
+            self._write_execution_reports(report_events, config, EXIT_VALIDATION_ERROR, printer)
+            return EXIT_VALIDATION_ERROR
         driver = None
         id_cycle = None
         if config["test"] is False:
             id_cycle = self.create_folder(config)["idCycle"]
         for cycle in object_cycle:
             # search test for this cycle
-            printer = config["printer"]
             object_test = self.get_tests(config, cycle["id"])
             printer.success("Test: " + cycle["description"])
+            if not object_test:
+                printer.danger(
+                    "Remote test cycle configuration is inconsistent: "
+                    f"test cycle {cycle['id']} contains no executable tests."
+                )
+                exit_code = EXIT_VALIDATION_ERROR
+                report_events.append(
+                    {
+                        "id": cycle["id"],
+                        "name": cycle["name"],
+                        "description": cycle["description"],
+                        "steps": [],
+                    }
+                )
+                continue
             id_test = cycle["id"]
             if config["test"] is False:
                 id_test = self.create_test(

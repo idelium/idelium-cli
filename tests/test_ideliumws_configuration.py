@@ -9,11 +9,74 @@ from idelium._internal.commons.connection import HttpTransportError
 from idelium._internal.exitcodes import (
     EXIT_DEPENDENCY_ERROR,
     EXIT_TEST_FAILURE,
+    EXIT_VALIDATION_ERROR,
 )
 from idelium._internal.ideliumws import IdeliumWs
 
 
 class IdeliumWsConfigurationTest(unittest.TestCase):
+    def test_start_test_returns_validation_error_when_cycle_has_no_entries(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "idCycle": "3",
+            "idProject": "1",
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+
+        with (
+            patch.object(web_service, "get_cycles", return_value=[]),
+            patch.object(web_service, "create_folder") as create_folder,
+        ):
+            exit_code = web_service.start_test(idelium, {"steps": {}}, config)
+
+        self.assertEqual(EXIT_VALIDATION_ERROR, exit_code)
+        create_folder.assert_not_called()
+        printer.danger.assert_called_once_with(
+            "Remote test cycle configuration is inconsistent: "
+            "test cycle 3 contains no executable tests."
+        )
+
+    def test_start_test_returns_validation_error_when_cycle_has_no_tests(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "idCycle": "3",
+            "idProject": "1",
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+
+        with (
+            patch.object(
+                web_service,
+                "get_cycles",
+                return_value=[
+                    {"id": 3, "name": "empty cycle", "description": "empty cycle"}
+                ],
+            ),
+            patch.object(web_service, "get_tests", return_value=[]),
+            patch.object(
+                web_service, "create_folder", return_value={"idCycle": 77}
+            ),
+            patch.object(web_service, "create_test") as create_test,
+        ):
+            exit_code = web_service.start_test(idelium, {"steps": {}}, config)
+
+        self.assertEqual(EXIT_VALIDATION_ERROR, exit_code)
+        create_test.assert_not_called()
+        printer.danger.assert_called_once_with(
+            "Remote test cycle configuration is inconsistent: "
+            "test cycle 3 contains no executable tests."
+        )
+
     def test_missing_referenced_step_returns_configuration_context(self):
         web_service = IdeliumWs()
         config = {
