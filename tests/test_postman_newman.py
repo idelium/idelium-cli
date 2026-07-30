@@ -634,7 +634,10 @@ class PostmanNewmanManagerTest(unittest.TestCase):
             "Postman runtime: requested=postman, runner=newman, requests=1, events=1"
         )
         config["printer"].print_important_text.assert_any_call(
-            "Postman result: PASSED POST 200 request"
+            "Postman calls:"
+        )
+        config["printer"].success.assert_any_call(
+            "[1/1] PASSED POST 200 0ms (no url) - request (1/1 assertions)"
         )
         safe_class.assert_not_called()
 
@@ -671,7 +674,10 @@ class PostmanNewmanManagerTest(unittest.TestCase):
 
         self.assertEqual("2", result["status"])
         config["printer"].print_important_text.assert_any_call(
-            "Postman result: FAILED NEWMAN 0 Newman"
+            "Postman calls:"
+        )
+        config["printer"].danger.assert_any_call(
+            "[1/1] FAILED NEWMAN 0 0ms (no url) - Newman (0/1 assertions)"
         )
         config["printer"].danger.assert_called_with(
             "newman: " + PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
@@ -713,7 +719,12 @@ class PostmanNewmanManagerTest(unittest.TestCase):
         config["printer"].danger.assert_called_with(
             "newman: " + PostmanNewmanCollection.NEWMAN_MISSING_MESSAGE
         )
-        config["printer"].print_important_text.assert_not_called()
+        config["printer"].print_important_text.assert_called_once_with(
+            "Postman calls:"
+        )
+        config["printer"].danger.assert_any_call(
+            "[1/1] FAILED NEWMAN 0 0ms (no url) - Newman (0/1 assertions)"
+        )
         safe_class.assert_not_called()
 
     @patch("idelium._internal.ideliummanager.PostmanCollection")

@@ -47,6 +47,31 @@ class StartManager:
         ]
 
     @staticmethod
+    def _postman_missing_collection_result():
+        message = (
+            "Postman step has no executable collection. Re-import the test with a "
+            "postman_collection action that contains the Postman collection payload."
+        )
+        return [
+            {
+                "name": "Postman collection",
+                "response": "",
+                "status": "0",
+                "method": "POSTMAN",
+                "url": "",
+                "time": 0,
+                "passed": False,
+                "assertions": [
+                    {
+                        "name": "postman collection",
+                        "passed": False,
+                        "message": message,
+                    }
+                ],
+            }
+        ]
+
+    @staticmethod
     def load_module(name):
         """load plugin"""
         print(name)
@@ -129,6 +154,63 @@ class StartManager:
         return str(runtime).lower(), postman_config
 
     @staticmethod
+    def _is_postman_step(object_step):
+        """Detect Postman collection steps across legacy and normalized payloads."""
+        step_markers = [
+            object_step.get("editorType"),
+            object_step.get("stepType"),
+            object_step.get("type"),
+            object_step.get("actionType"),
+            object_step.get("runtime"),
+        ]
+        if any("postman" in str(marker).lower() for marker in step_markers if marker):
+            return True
+        collection = object_step.get("collection")
+        if not isinstance(collection, dict):
+            return False
+        nested_collection = collection.get("collection")
+        return bool(
+            (isinstance(nested_collection, dict) and "item" in nested_collection)
+            or ("info" in collection and "item" in collection)
+            or ("item" in collection)
+        )
+
+    @staticmethod
+    def _postman_assertion_summary(result):
+        assertions = result.get("assertions") or []
+        if not assertions:
+            return "0/0 assertions"
+        passed = sum(1 for assertion in assertions if assertion.get("passed") is True)
+        return "{}/{} assertions".format(passed, len(assertions))
+
+    @staticmethod
+    def _print_postman_results(printer, postman_data):
+        """Print one safe terminal line for every Postman request result."""
+        if not postman_data:
+            printer.warning("Postman calls: no request results were captured.")
+            return
+
+        printer.print_important_text("Postman calls:")
+        total = len(postman_data)
+        for index, result in enumerate(postman_data, start=1):
+            status_label = "PASSED" if result.get("passed") is True else "FAILED"
+            line = "[{}/{}] {} {} {} {}ms {} - {}".format(
+                index,
+                total,
+                status_label,
+                result.get("method", ""),
+                result.get("status", ""),
+                result.get("time", 0),
+                result.get("url", "") or "(no url)",
+                result.get("name", "Unnamed request"),
+            )
+            line = line + " (" + StartManager._postman_assertion_summary(result) + ")"
+            if result.get("passed") is True:
+                printer.success(line)
+            else:
+                printer.danger(line)
+
+    @staticmethod
     def execute_step(driver, config):
         """Execute single step"""
         status = "1"
@@ -138,12 +220,26 @@ class StartManager:
         typeOfStep = "seleniumOrAppium"
         postman_data = None
         dependency_failed = False
+        if not config["json_step"].get("steps") and StartManager._is_postman_step(
+            config["json_step"]
+        ):
+            postman_data = StartManager._postman_missing_collection_result()
+            printer.danger(postman_data[0]["assertions"][0]["message"])
+            return {
+                "driver": driver,
+                "status": "2",
+                "step_failed": config["json_step"],
+                "type": "postman",
+                "postman_data": postman_data,
+                "dependency_failed": False,
+            }
+
         for object_step in config["json_step"]["steps"]:
             if status != "1":
                 printer.danger(object_step["stepType"] + ": skipped")
                 continue
 
-            if object_step["stepType"] == "postman_collection":
+            if StartManager._is_postman_step(object_step):
                 verify = config.get("caBundle") or not config.get("insecure", False)
                 timeout = (
                     float(config.get("httpConnectTimeout", 5)),
@@ -184,17 +280,7 @@ class StartManager:
                     postman_data = postman.start_postman_test(
                         object_step["collection"], config["is_debug"]
                     )
-                if config["is_debug"] is True:
-                    for result in postman_data:
-                        status_label = "PASSED" if result["passed"] else "FAILED"
-                        printer.print_important_text(
-                            "Postman result: {} {} {} {}".format(
-                                status_label,
-                                result.get("method", ""),
-                                result.get("status", ""),
-                                result.get("name", "Unnamed request"),
-                            )
-                        )
+                StartManager._print_postman_results(printer, postman_data)
                 for result in postman_data:
                     for assertion in result.get("assertions", []):
                         if assertion.get("passed") is False:
