@@ -123,6 +123,36 @@ class PostmanCollectionTest(unittest.TestCase):
         self.assertNotIn("data", session.request.call_args.kwargs)
         self.assertNotIn("files", session.request.call_args.kwargs)
 
+    def test_request_payload_is_captured_and_redacted(self):
+        session = Mock()
+        session.request.return_value = self.response(200, '{"ok":true}')
+        runner = PostmanCollection(session=session)
+        item = {
+            "name": "Create payload",
+            "request": {
+                "method": "POST",
+                "url": {"raw": "https://example.test/payload"},
+                "header": [],
+                "body": {
+                    "mode": "raw",
+                    "raw": json.dumps(
+                        {
+                            "product": "idelium",
+                            "access_token": "sensitive-token",
+                        }
+                    ),
+                },
+            },
+            "response": [{"code": 200, "body": '{"ok":true}'}],
+        }
+
+        result = runner.connection_test(item)
+
+        self.assertEqual(
+            {"product": "idelium", "access_token": "[REDACTED]"},
+            json.loads(result["requestPayload"]),
+        )
+
     def test_environment_variables_nested_folders_and_redaction_are_supported(self):
         session = Mock()
         session.request.return_value = self.response(

@@ -42,6 +42,15 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
                                         "url": {
                                             "raw": "https://example.test?token=secret"
                                         },
+                                        "body": {
+                                            "mode": "raw",
+                                            "raw": json.dumps(
+                                                {
+                                                    "product": "idelium",
+                                                    "access_token": "request-secret",
+                                                }
+                                            ),
+                                        },
                                     },
                                     "response": {
                                         "code": 200,
@@ -87,6 +96,10 @@ class PostmanNewmanCollectionTest(unittest.TestCase):
         self.assertTrue(results[0]["passed"])
         self.assertEqual("200", results[0]["status"])
         self.assertEqual("https://example.test?token=%5BREDACTED%5D", results[0]["url"])
+        self.assertEqual(
+            {"product": "idelium", "access_token": "[REDACTED]"},
+            json.loads(results[0]["requestPayload"]),
+        )
         self.assertEqual(
             {"ok": True, "access_token": "[REDACTED]"},
             json.loads(results[0]["response"]),

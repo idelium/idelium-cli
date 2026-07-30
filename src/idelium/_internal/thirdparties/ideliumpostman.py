@@ -99,6 +99,14 @@ class PostmanCollection:
         return json.dumps(cls._redact(parsed), separators=(",", ":"))
 
     @classmethod
+    def _redact_request_payload(cls, payload):
+        if payload is None:
+            return ""
+        if isinstance(payload, (dict, list)):
+            return json.dumps(cls._redact(payload), separators=(",", ":"))
+        return cls._redact_body(str(payload))
+
+    @classmethod
     def _redact_url(cls, url):
         parts = urlsplit(url)
         query = [
@@ -269,6 +277,7 @@ class PostmanCollection:
             assertions = self._assertions(item, response)
             result = {
                 "name": item.get("name", "Unnamed request"),
+                "requestPayload": self._redact_request_payload(data),
                 "response": self._redact_body(response.text),
                 "status": str(response.status_code),
                 "method": method,
@@ -280,6 +289,7 @@ class PostmanCollection:
         except HttpTransportError:
             result = {
                 "name": item.get("name", "Unnamed request"),
+                "requestPayload": self._redact_request_payload(data),
                 "response": "Request failed.",
                 "status": "0",
                 "method": method,
@@ -468,6 +478,18 @@ class PostmanNewmanCollection:
         return str(body or "")
 
     @staticmethod
+    def _request_payload(request):
+        body = (request or {}).get("body") or {}
+        mode = body.get("mode") or body.get("method")
+        if mode == "raw":
+            return body.get("raw", body.get("value", ""))
+        if mode in {"urlencoded", "formdata"}:
+            return PostmanCollection._pairs_to_dict(body.get(mode, []))
+        if mode == "graphql":
+            return body.get("graphql", {})
+        return ""
+
+    @staticmethod
     def _response_status(response):
         if response is None:
             return "0"
@@ -551,6 +573,9 @@ class PostmanNewmanCollection:
 
         return {
             "name": item.get("name", "Unnamed request"),
+            "requestPayload": PostmanCollection._redact_request_payload(
+                self._request_payload(request)
+            ),
             "response": PostmanCollection._redact_body(self._response_body(response)),
             "status": self._response_status(response),
             "method": self._request_method(request),
