@@ -18,6 +18,7 @@ from idelium._internal.executionreport import (
     write_markdown_report,
 )
 from idelium._internal.exitcodes import (
+    EXIT_CONNECTIVITY_ERROR,
     EXIT_DEPENDENCY_ERROR,
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
@@ -58,6 +59,18 @@ class IdeliumWs:
         }
         return Connection.start(
             "POST", url, payload, config["ideliumKey"], config["is_debug"]
+        )
+
+    @staticmethod
+    def update_folder(config, id_cycle, status):
+        """Finalize the performed test cycle status."""
+        url = config["api_idelium"] + "testcycle"
+        payload = {
+            "testCycleId": id_cycle,
+            "status": status,
+        }
+        return Connection.start(
+            "PUT", url, payload, config["ideliumKey"], config["is_debug"]
         )
 
     @staticmethod
@@ -433,118 +446,176 @@ class IdeliumWs:
         id_cycle = None
         if config["test"] is False:
             id_cycle = self.create_folder(config)["idCycle"]
-        for cycle in object_cycle:
-            # search test for this cycle
-            object_test = self.get_tests(config, cycle["id"])
-            printer.success("Test: " + cycle["description"])
-            if not object_test:
-                printer.danger(
-                    "Remote test cycle configuration is inconsistent: "
-                    f"test cycle {cycle['id']} contains no executable tests."
-                )
-                exit_code = EXIT_VALIDATION_ERROR
-                report_events.append(
-                    {
-                        "id": cycle["id"],
-                        "name": cycle["name"],
-                        "description": cycle["description"],
-                        "steps": [],
-                    }
-                )
-                continue
-            id_test = cycle["id"]
-            if config["test"] is False:
-                id_test = self.create_test(
-                    config,
-                    id_cycle,
-                    cycle["id"],
-                    cycle["name"],
-                )["idTest"]
-            test_failed = False
-            report_test = {
-                "id": cycle["id"],
-                "name": cycle["name"],
-                "description": cycle["description"],
-                "steps": [],
-            }
-            for test in object_test:
-                if test_failed is False:
-                    started_at = time.monotonic()
-                    id_step = None
-                    json_step = test_configurations["steps"].get(
-                        test["name"] + "_" + str(test["id"]),
-                        {
-                            "name": test.get("name", "unknown"),
-                            "attachScreenshot": False,
-                            "failedExit": True,
-                        },
+        try:
+            for cycle in object_cycle:
+                # search test for this cycle
+                object_test = self.get_tests(config, cycle["id"])
+                printer.success("Test: " + cycle["description"])
+                if not object_test:
+                    printer.danger(
+                        "Remote test cycle configuration is inconsistent: "
+                        f"test cycle {cycle['id']} contains no executable tests."
                     )
-                    typeofstep = self.step_runtime(json_step)
-                    postman_data = []
-                    step_failed = ""
-                    bidi_artifacts = []
-                    screenshot_artifacts = []
-                    try:
-                        printer.underline(json_step["name"] + "(" + str(test["id"]) + ")")
-                        config["wrapper"] = wrapper
-                        config["printer"] = printer
-                        config["json_step"] = json_step
-                        config["plugins"] = test_configurations.get("plugins", {})
-                        object_return = idelium.execute_step(driver, config)
-                        duration_ms = int((time.monotonic() - started_at) * 1000)
-                        status = object_return["status"]
-                        driver = object_return["driver"]
-                        postman_data = object_return["postman_data"]
-                        typeofstep = object_return["type"]
-                        step_failed = object_return["step_failed"]
-                        bidi_artifacts = config.pop("bidiArtifacts", [])
-                        dependency_failed = object_return.get("dependency_failed", False)
-                        config["status"] = status
-                        config["step_failed"] = step_failed
-                        # test["name"],
-                        if config["test"] is False:
-                            id_step = self.create_step(
-                                config,
-                                id_cycle,
-                                id_test,
-                                test["id"],
-                                json_step["name"],
-                                status,
-                                postman_data,
-                                typeofstep,
-                            )["idStep"]
-                    except Exception as error:
-                        duration_ms = int((time.monotonic() - started_at) * 1000)
-                        status = "2"
-                        safe_error = self._safe_error_message(error)
-                        step_failed = {
-                            "error": error.__class__.__name__,
-                            "message": safe_error,
+                    exit_code = EXIT_VALIDATION_ERROR
+                    report_events.append(
+                        {
+                            "id": cycle["id"],
+                            "name": cycle["name"],
+                            "description": cycle["description"],
+                            "steps": [],
                         }
-                        failed_payload = self.failed_step_result(
-                            test["id"],
-                            json_step.get("name", test.get("name", "unknown")),
-                            typeofstep,
-                            safe_error,
-                            duration_ms,
+                    )
+                    continue
+                id_test = cycle["id"]
+                if config["test"] is False:
+                    id_test = self.create_test(
+                        config,
+                        id_cycle,
+                        cycle["id"],
+                        cycle["name"],
+                    )["idTest"]
+                test_failed = False
+                report_test = {
+                    "id": cycle["id"],
+                    "name": cycle["name"],
+                    "description": cycle["description"],
+                    "steps": [],
+                }
+                for test in object_test:
+                    if test_failed is False:
+                        started_at = time.monotonic()
+                        id_step = None
+                        json_step = test_configurations["steps"].get(
+                            test["name"] + "_" + str(test["id"]),
+                            {
+                                "name": test.get("name", "unknown"),
+                                "attachScreenshot": False,
+                                "failedExit": True,
+                            },
                         )
-                        printer.danger(
-                            "Step failed with an unexpected CLI error: " + safe_error
-                        )
-                        config["status"] = status
-                        config["step_failed"] = step_failed
-                        if config["test"] is False:
-                            id_step = self.create_step(
-                                config,
-                                id_cycle,
-                                id_test,
+                        typeofstep = self.step_runtime(json_step)
+                        postman_data = []
+                        step_failed = ""
+                        bidi_artifacts = []
+                        screenshot_artifacts = []
+                        try:
+                            printer.underline(
+                                json_step["name"] + "(" + str(test["id"]) + ")"
+                            )
+                            config["wrapper"] = wrapper
+                            config["printer"] = printer
+                            config["json_step"] = json_step
+                            config["plugins"] = test_configurations.get("plugins", {})
+                            object_return = idelium.execute_step(driver, config)
+                            duration_ms = int((time.monotonic() - started_at) * 1000)
+                            status = object_return["status"]
+                            driver = object_return["driver"]
+                            postman_data = object_return["postman_data"]
+                            typeofstep = object_return["type"]
+                            step_failed = object_return["step_failed"]
+                            bidi_artifacts = config.pop("bidiArtifacts", [])
+                            dependency_failed = object_return.get(
+                                "dependency_failed",
+                                False,
+                            )
+                            config["status"] = status
+                            config["step_failed"] = step_failed
+                            # test["name"],
+                            if config["test"] is False:
+                                id_step = self.create_step(
+                                    config,
+                                    id_cycle,
+                                    id_test,
+                                    test["id"],
+                                    json_step["name"],
+                                    status,
+                                    postman_data,
+                                    typeofstep,
+                                )["idStep"]
+                        except Exception as error:
+                            duration_ms = int((time.monotonic() - started_at) * 1000)
+                            status = "2"
+                            safe_error = self._safe_error_message(error)
+                            step_failed = {
+                                "error": error.__class__.__name__,
+                                "message": safe_error,
+                            }
+                            failed_payload = self.failed_step_result(
                                 test["id"],
                                 json_step.get("name", test.get("name", "unknown")),
-                                status,
-                                failed_payload,
                                 typeofstep,
-                            )["idStep"]
-                            self.update_test(config, id_test, 2, postman_data)
+                                safe_error,
+                                duration_ms,
+                            )
+                            printer.danger(
+                                "Step failed with an unexpected CLI error: " + safe_error
+                            )
+                            config["status"] = status
+                            config["step_failed"] = step_failed
+                            if config["test"] is False:
+                                id_step = self.create_step(
+                                    config,
+                                    id_cycle,
+                                    id_test,
+                                    test["id"],
+                                    json_step.get("name", test.get("name", "unknown")),
+                                    status,
+                                    failed_payload,
+                                    typeofstep,
+                                )["idStep"]
+                                self.update_test(config, id_test, 2, postman_data)
+                            report_test["steps"].append(
+                                self._report_step_event(
+                                    test,
+                                    json_step,
+                                    status,
+                                    duration_ms,
+                                    typeofstep,
+                                    postman_data,
+                                    step_failed,
+                                    bidi_artifacts,
+                                    screenshot_artifacts,
+                                )
+                            )
+                            if exit_code == EXIT_SUCCESS:
+                                exit_code = EXIT_TEST_FAILURE
+                            printer.danger(
+                                "The test '"
+                                + cycle["name"]
+                                + "' was interrupted because a required step failed"
+                            )
+                            test_failed = True
+                            continue
+                        if status in ("2", "5"):
+                            if dependency_failed:
+                                exit_code = EXIT_DEPENDENCY_ERROR
+                            elif exit_code == EXIT_SUCCESS:
+                                exit_code = EXIT_TEST_FAILURE
+                            if object_return["type"] == "seleniumOrAppium":
+                                screenshot_artifacts = self._capture_failure_screenshot(
+                                    wrapper,
+                                    driver,
+                                    config,
+                                    id_test,
+                                    id_step,
+                                )
+
+                            should_stop = (
+                                object_return["type"] == "postman"
+                                or config["json_step"]["failedExit"] is True
+                            )
+                            if config["test"] is False:
+                                self.update_test(config, id_test, 2, postman_data)
+                            if should_stop:
+                                printer.danger(
+                                    "The test '"
+                                    + cycle["name"]
+                                    + "' was interrupted because a required step failed"
+                                )
+                                test_failed = True
+                        else:
+                            if config["test"] is False:
+                                self.update_test(config, id_test, 1, postman_data)
                         report_test["steps"].append(
                             self._report_step_event(
                                 test,
@@ -558,116 +629,93 @@ class IdeliumWs:
                                 screenshot_artifacts,
                             )
                         )
-                        if exit_code == EXIT_SUCCESS:
-                            exit_code = EXIT_TEST_FAILURE
-                        printer.danger(
-                            "The test '"
-                            + cycle["name"]
-                            + "' was interrupted because a required step failed"
-                        )
-                        test_failed = True
-                        continue
-                    if status in ("2", "5"):
-                        if dependency_failed:
-                            exit_code = EXIT_DEPENDENCY_ERROR
-                        elif exit_code == EXIT_SUCCESS:
-                            exit_code = EXIT_TEST_FAILURE
-                        if object_return["type"] == "seleniumOrAppium":
-                            screenshot_artifacts = self._capture_failure_screenshot(
-                                wrapper,
-                                driver,
-                                config,
-                                id_test,
-                                id_step,
-                            )
-
-                        should_stop = (
-                            object_return["type"] == "postman"
-                            or config["json_step"]["failedExit"] is True
-                        )
-                        if config["test"] is False:
-                            self.update_test(config, id_test, 2, postman_data)
-                        if should_stop:
-                            printer.danger(
-                                "The test '"
-                                + cycle["name"]
-                                + "' was interrupted because a required step failed"
-                            )
-                            test_failed = True
                     else:
-                        if config["test"] is False:
-                            self.update_test(config, id_test, 1, postman_data)
-                    report_test["steps"].append(
-                        self._report_step_event(
-                            test,
-                            json_step,
-                            status,
-                            duration_ms,
-                            typeofstep,
-                            postman_data,
-                            step_failed,
-                            bidi_artifacts,
-                            screenshot_artifacts,
+                        json_step = test_configurations["steps"].get(
+                            test["name"] + "_" + str(test["id"]),
+                            {"name": test["name"]},
                         )
-                    )
-                else:
-                    json_step = test_configurations["steps"].get(
-                        test["name"] + "_" + str(test["id"]),
-                        {"name": test["name"]},
-                    )
-                    skipped_reason = (
-                        "Step skipped because a previous required step failed."
-                    )
-                    typeofstep = self.step_runtime(json_step)
-                    skipped_payload = self.skipped_step_result(
-                        test["id"],
-                        json_step.get("name", test["name"]),
-                        typeofstep,
-                        skipped_reason,
-                    )
-                    if config["test"] is False:
-                        self.create_step(
-                            config,
-                            id_cycle,
-                            id_test,
+                        skipped_reason = (
+                            "Step skipped because a previous required step failed."
+                        )
+                        typeofstep = self.step_runtime(json_step)
+                        skipped_payload = self.skipped_step_result(
                             test["id"],
                             json_step.get("name", test["name"]),
-                            "5",
-                            skipped_payload,
                             typeofstep,
+                            skipped_reason,
                         )
-                    report_test["steps"].append(
-                        {
-                            "id": test["id"],
-                            "name": json_step.get("name", test["name"]),
-                            "type": typeofstep,
-                            "status": "5",
-                            "durationMilliseconds": 0,
-                            "diagnostics": [
-                                {
-                                    "level": "warning",
-                                    "message": skipped_reason,
-                                }
-                            ],
-                            "artifacts": [],
-                            "postmanResults": [],
-                        }
-                    )
-            report_events.append(report_test)
-            if config["ideliumServer"] is True:
-                os.remove(config["dir_idelium_scripts"] + "server")
-            if driver is not None:
-                try:
-                    close_bidi_session = getattr(wrapper, "close_bidi_session", None)
-                    if close_bidi_session is not None:
-                        close_bidi_session(config, printer)
-                finally:
-                    cleanup_result = W3CWebDriverAdapter(driver).quit()
-                    if cleanup_result.error is not None:
-                        printer.danger(cleanup_result.error.message)
-                    driver = None
+                        if config["test"] is False:
+                            self.create_step(
+                                config,
+                                id_cycle,
+                                id_test,
+                                test["id"],
+                                json_step.get("name", test["name"]),
+                                "5",
+                                skipped_payload,
+                                typeofstep,
+                            )
+                        report_test["steps"].append(
+                            {
+                                "id": test["id"],
+                                "name": json_step.get("name", test["name"]),
+                                "type": typeofstep,
+                                "status": "5",
+                                "durationMilliseconds": 0,
+                                "diagnostics": [
+                                    {
+                                        "level": "warning",
+                                        "message": skipped_reason,
+                                    }
+                                ],
+                                "artifacts": [],
+                                "postmanResults": [],
+                            }
+                        )
+                report_events.append(report_test)
+                if config["ideliumServer"] is True:
+                    os.remove(config["dir_idelium_scripts"] + "server")
+                if driver is not None:
+                    try:
+                        close_bidi_session = getattr(
+                            wrapper,
+                            "close_bidi_session",
+                            None,
+                        )
+                        if close_bidi_session is not None:
+                            close_bidi_session(config, printer)
+                    finally:
+                        cleanup_result = W3CWebDriverAdapter(driver).quit()
+                        if cleanup_result.error is not None:
+                            printer.danger(cleanup_result.error.message)
+                        driver = None
+        finally:
+            finalize_exit_code = self._finalize_performed_cycle(
+                config,
+                id_cycle,
+                exit_code,
+                printer,
+            )
+            if exit_code == EXIT_SUCCESS and finalize_exit_code != EXIT_SUCCESS:
+                exit_code = finalize_exit_code
         self._write_execution_reports(report_events, config, exit_code, printer)
         return exit_code
+
+    def _finalize_performed_cycle(self, config, id_cycle, exit_code, printer):
+        if config["test"] is True or id_cycle is None or not config.get("api_idelium"):
+            return EXIT_SUCCESS
+        status = 1
+        if exit_code != EXIT_SUCCESS or sys.exc_info()[0] is not None:
+            status = 2
+        try:
+            self.update_folder(config, id_cycle, status)
+        except HttpTransportError as error:
+            printer.danger(
+                "Unable to finalize the remote performed test cycle "
+                f"{id_cycle}: {error}"
+            )
+            return EXIT_CONNECTIVITY_ERROR
+        return EXIT_SUCCESS
 
     @staticmethod
     def _report_step_event(

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from idelium._internal.commons.connection import HttpTransportError
 from idelium._internal.exitcodes import (
     EXIT_DEPENDENCY_ERROR,
+    EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
     EXIT_VALIDATION_ERROR,
 )
@@ -238,6 +239,119 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
                 "screenshots": "[]",
             },
             start.call_args_list[1].args[2],
+        )
+
+    def test_performed_cycle_finalization_uses_terminal_status(self):
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+        }
+
+        with patch("idelium._internal.ideliumws.Connection.start") as start:
+            start.return_value = {"idCycle": 77}
+
+            result = IdeliumWs.update_folder(config, id_cycle=77, status=2)
+
+        self.assertEqual({"idCycle": 77}, result)
+        self.assertEqual("PUT", start.call_args.args[0])
+        self.assertEqual(
+            "https://localhost/api/ideliumcl/testcycle",
+            start.call_args.args[1],
+        )
+        self.assertEqual(
+            {
+                "testCycleId": 77,
+                "status": 2,
+            },
+            start.call_args.args[2],
+        )
+
+    def test_remote_execution_finalizes_failed_performed_cycle(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "idProject": "3",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "postman_17": {
+                    "name": "postman",
+                    "attachScreenshot": False,
+                    "failedExit": False,
+                }
+            }
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.return_value = {
+            "status": "2",
+            "driver": None,
+            "postman_data": [],
+            "type": "postman",
+            "step_failed": {"stepType": "postman_collection"},
+        }
+
+        with (
+            patch.object(web_service, "get_cycles") as get_cycles,
+            patch.object(web_service, "get_tests") as get_tests,
+            patch.object(web_service, "create_folder") as create_folder,
+            patch.object(web_service, "create_test") as create_test,
+            patch.object(web_service, "create_step") as create_step,
+            patch.object(web_service, "update_test"),
+            patch.object(web_service, "update_folder") as update_folder,
+        ):
+            get_cycles.return_value = [
+                {"id": 11, "name": "postman cycle", "description": "postman cycle"}
+            ]
+            get_tests.return_value = [{"id": 17, "name": "postman"}]
+            create_folder.return_value = {"idCycle": 77}
+            create_test.return_value = {"idTest": 91}
+            create_step.return_value = {"idStep": 92}
+
+            exit_code = web_service.start_test(idelium, test_configurations, config)
+
+        self.assertEqual(EXIT_TEST_FAILURE, exit_code)
+        update_folder.assert_called_once_with(config, 77, 2)
+
+    def test_remote_execution_reports_finalize_transport_failure(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "idProject": "3",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+
+        with patch.object(
+            web_service,
+            "update_folder",
+            side_effect=HttpTransportError("PUT request returned HTTP 500"),
+        ):
+            exit_code = web_service._finalize_performed_cycle(
+                config,
+                id_cycle=77,
+                exit_code=EXIT_SUCCESS,
+                printer=printer,
+            )
+
+        self.assertNotEqual(EXIT_SUCCESS, exit_code)
+        printer.danger.assert_called_once_with(
+            "Unable to finalize the remote performed test cycle 77: "
+            "PUT request returned HTTP 500"
         )
 
     def test_step_creation_accepts_versioned_performed_trace_in_data_contract(self):
