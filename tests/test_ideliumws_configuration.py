@@ -494,6 +494,66 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         create_step.assert_called_once()
         update_test.assert_called_once_with(config, 91, 2, postman_data)
 
+    def test_unexpected_step_error_marks_remote_test_failed(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "idCycle": "2",
+            "idProject": "3",
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "login_17": {
+                    "name": "login",
+                    "type": "selenium",
+                    "attachScreenshot": False,
+                    "failedExit": True,
+                }
+            }
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.side_effect = RuntimeError(
+            "browser crashed token=secret-value"
+        )
+
+        with (
+            patch.object(web_service, "get_cycles") as get_cycles,
+            patch.object(web_service, "get_tests") as get_tests,
+            patch.object(web_service, "create_folder") as create_folder,
+            patch.object(web_service, "create_test") as create_test,
+            patch.object(web_service, "create_step") as create_step,
+            patch.object(web_service, "update_test") as update_test,
+        ):
+            get_cycles.return_value = [
+                {"id": 11, "name": "regression", "description": "regression"}
+            ]
+            get_tests.return_value = [{"id": 17, "name": "login"}]
+            create_folder.return_value = {"idCycle": 77}
+            create_test.return_value = {"idTest": 91}
+            create_step.return_value = {"idStep": 92}
+
+            exit_code = web_service.start_test(idelium, test_configurations, config)
+
+        self.assertEqual(EXIT_TEST_FAILURE, exit_code)
+        create_step.assert_called_once()
+        self.assertEqual("2", create_step.call_args.args[5])
+        payload = create_step.call_args.args[6]
+        self.assertEqual("failed", payload["summary"]["status"])
+        self.assertIn("token=[REDACTED]", payload["diagnostics"][0]["message"])
+        self.assertNotIn("secret-value", json.dumps(payload))
+        update_test.assert_called_once_with(config, 91, 2, [])
+        printer.danger.assert_any_call(
+            "Step failed with an unexpected CLI error: "
+            "browser crashed token=[REDACTED]"
+        )
+        printer.danger.assert_any_call(
+            "The test 'regression' was interrupted because a required step failed"
+        )
+
     def test_local_execution_reports_are_written_from_canonical_result(self):
         web_service = IdeliumWs()
         printer = Mock()
