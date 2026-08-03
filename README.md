@@ -164,6 +164,7 @@ flag.
 
 | Option | Purpose | Default |
 | --- | --- | --- |
+| `--browser=<name>` | Browser to launch: `chrome`, `firefox`, `edge`, `safari`, `opera`, or `iexplorer` | `chrome` |
 | `--useragent=<value>` | Override the browser user agent | environment value |
 | `--width=<pixels>` | Browser viewport width | `1920` |
 | `--height=<pixels>` | Browser viewport height | `1080` |
@@ -301,6 +302,21 @@ code `0`; syntax errors or lint errors return exit code `2`.
 For local browser execution, install a compatible browser. The CLI uses Selenium
 and WebDriver Manager to select or acquire supported drivers. Browser availability
 and vendor restrictions still apply on the execution host.
+
+Chrome is the default browser. Override it from the command line when a run must
+target another local browser or Selenium Grid browser:
+
+```bash
+idelium \
+  --idProject=<project-id> \
+  --idCycle=<cycle-id> \
+  --environment=demo \
+  --browser=firefox \
+  --ideliumwsBaseurl=https://localhost
+```
+
+For local Firefox execution, install Firefox and make sure `geckodriver` can be
+resolved by WebDriver Manager or is available on the execution host.
 
 ### Selenium Grid
 

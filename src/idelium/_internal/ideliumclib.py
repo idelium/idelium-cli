@@ -35,6 +35,8 @@ class InitIdelium:
     --idCycle               cycle id to associate to the execution "idCycle1,idCycle2,...."
     --idProject             force idProject
     --environment           environment json config file (required)
+    --browser               browser to launch: chrome | firefox | edge | safari
+                            | opera | iexplorer (default chrome)
     --useragent             set useragent for the test
     --test                  for testing without store the results
     --verbose               for debugging 
@@ -122,6 +124,7 @@ class InitIdelium:
             "username": None,
             "password": None,
             "environment": None,
+            "browser": "chrome",
             "idJira": None,
             "fileSteps": None,
             "idVersion": None,
@@ -287,10 +290,32 @@ class InitIdelium:
                     printer.danger("\nideliumwsBaseurl must be set")
                     sys.exit(1)
         self.configure_http(cl_params, printer)
+        self.configure_browser(cl_params, printer)
         self.configure_dsl_parameters(cl_params, printer)
         return {
             "cl_params": cl_params,
         }
+
+    @staticmethod
+    def configure_browser(cl_params, printer):
+        """Validate the browser selected from the command line."""
+
+        browser = str(cl_params.get("browser") or "chrome").strip().lower()
+        supported_browsers = {
+            "chrome",
+            "firefox",
+            "edge",
+            "safari",
+            "opera",
+            "iexplorer",
+        }
+        if browser not in supported_browsers:
+            printer.danger(
+                "browser must be one of: "
+                + ", ".join(sorted(supported_browsers))
+            )
+            sys.exit(1)
+        cl_params["browser"] = browser
 
     @staticmethod
     def configure_dsl_parameters(cl_params, printer):
@@ -351,6 +376,7 @@ class InitIdelium:
                 cl_params["environment"],
                 project_id=cl_params["idProject"],
                 overrides={
+                    "browser": cl_params.get("browser"),
                     "url": cl_params.get("url"),
                     "seleniumGridUrl": cl_params.get("seleniumGridUrl"),
                     "seleniumGridCapabilities": cl_params.get(

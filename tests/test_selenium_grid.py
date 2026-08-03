@@ -209,6 +209,38 @@ class SeleniumGridTest(unittest.TestCase):
         )
         self.assertEqual("auto", loaded["cl_params"]["bidiMode"])
 
+    def test_command_line_browser_overrides_environment_browser(self):
+        loader = InitIdelium()
+        printer = Mock()
+        web_service = Mock()
+        web_service.get_configuration.return_value = {
+            "environments": {
+                "ci": {
+                    "browser": "chrome",
+                    "url": "https://application.example.test",
+                },
+            },
+            "configStep": {},
+        }
+        defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject=1",
+                "--idCycle=2",
+                "--environment=ci",
+                "--ideliumKey=key==",
+                "--ideliumwsBaseurl=https://api.example.test",
+                "--browser=firefox",
+            ],
+            web_service,
+            printer,
+        )
+
+        loaded = loader.load_parameters(defined["cl_params"], web_service, printer)
+
+        self.assertEqual("firefox", loaded["cl_params"]["browser"])
+        self.assertEqual("firefox", loaded["cl_params"]["json_config"]["browser"])
+
     def test_invalid_bidi_mode_is_rejected(self):
         loader = InitIdelium()
         printer = Mock()

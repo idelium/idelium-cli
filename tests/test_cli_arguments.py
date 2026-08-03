@@ -66,6 +66,64 @@ class CliArgumentParsingTest(unittest.TestCase):
 
         self.assertTrue(defined["cl_params"]["test"])
 
+    def test_browser_defaults_to_chrome_and_accepts_firefox_override(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        default_defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject=1",
+                "--idCycle=2",
+                "--environment=demo",
+                "--ideliumKey=key==",
+                "--ideliumwsBaseurl=https://localhost",
+            ],
+            Mock(),
+            printer,
+        )
+        firefox_defined = loader.define_parameters(
+            [
+                "idelium",
+                "--idProject=1",
+                "--idCycle=2",
+                "--environment=demo",
+                "--ideliumKey=key==",
+                "--ideliumwsBaseurl=https://localhost",
+                "--browser=firefox",
+            ],
+            Mock(),
+            printer,
+        )
+
+        self.assertEqual("chrome", default_defined["cl_params"]["browser"])
+        self.assertEqual("firefox", firefox_defined["cl_params"]["browser"])
+
+    def test_invalid_browser_exits_with_clear_error(self):
+        loader = InitIdelium()
+        printer = Mock()
+
+        with patch("builtins.print"), self.assertRaises(SystemExit) as raised:
+            loader.define_parameters(
+                [
+                    "idelium",
+                    "--idProject=1",
+                    "--idCycle=2",
+                    "--environment=demo",
+                    "--ideliumKey=key==",
+                    "--ideliumwsBaseurl=https://localhost",
+                    "--browser=netscape",
+                ],
+                Mock(),
+                printer,
+            )
+
+        self.assertEqual(1, raised.exception.code)
+        self.assertEqual(
+            "browser must be one of: chrome, edge, firefox, iexplorer, opera, safari",
+            printer.danger.call_args.args[0],
+        )
+
     def test_reads_protected_key_file_without_trailing_newline(self):
         loader = InitIdelium()
         printer = Mock()
