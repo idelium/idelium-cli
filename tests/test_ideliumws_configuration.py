@@ -288,6 +288,35 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             start.call_args.args[2],
         )
 
+    def test_performed_cycle_context_uses_host_os_when_environment_omits_platform(self):
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "environment": "demo",
+            "browser": "firefox",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "json_config": {"browser": "firefox"},
+        }
+
+        with (
+            patch("idelium._internal.ideliumws.Connection.start") as start,
+            patch("idelium._internal.ideliumws.platform.system", return_value="Darwin"),
+            patch("idelium._internal.ideliumws.platform.release", return_value="25.0.0"),
+        ):
+            start.return_value = {"idCycle": 77}
+
+            IdeliumWs.create_folder(config)
+
+        self.assertEqual(
+            "darwin",
+            start.call_args.args[2]["executionContext"]["platformName"],
+        )
+        self.assertEqual(
+            "25.0.0",
+            start.call_args.args[2]["executionContext"]["platformVersion"],
+        )
+
     def test_performed_cycle_finalization_uses_terminal_status(self):
         config = {
             "api_idelium": "https://localhost/api/ideliumcl/",

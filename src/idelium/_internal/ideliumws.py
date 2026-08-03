@@ -7,6 +7,7 @@ import json
 import collections
 import time
 import re
+import platform
 from pathlib import Path
 import base64
 from idelium._internal.commons.connection import Connection, HttpTransportError
@@ -69,6 +70,8 @@ class IdeliumWs:
         json_config = config.get("json_config") or {}
         appium_caps = json_config.get("appiumDesiredCaps") or {}
         capabilities = config.get("seleniumGridCapabilities") or {}
+        host_platform_name = platform.system().lower() or None
+        host_platform_version = platform.release() or None
         context = {
             "environment": config.get("environment"),
             "environmentName": (
@@ -93,11 +96,13 @@ class IdeliumWs:
                 json_config.get("platformName")
                 or capabilities.get("platformName")
                 or appium_caps.get("platformName")
+                or host_platform_name
             ),
             "platformVersion": (
                 json_config.get("platformVersion")
                 or capabilities.get("platformVersion")
                 or appium_caps.get("platformVersion")
+                or host_platform_version
             ),
             "runtime": json_config.get("runtime"),
         }
