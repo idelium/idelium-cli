@@ -86,6 +86,63 @@ class SeleniumClicksTest(unittest.TestCase):
         chain.click.assert_called_once_with(element)
         chain.perform.assert_called_once_with()
 
+    @patch("idelium._internal.wrappers.ideliumselenium.Select")
+    def test_select_uses_script_fallback_when_option_click_is_intercepted(
+        self, select_factory
+    ):
+        driver = Mock()
+        element = Mock()
+        driver.find_element.return_value = element
+        select = select_factory.return_value
+        select.select_by_value.side_effect = ElementClickInterceptedException(
+            "element click intercepted"
+        )
+        wrapper = IdeliumSelenium()
+
+        result = wrapper.select(
+            driver,
+            {},
+            {
+                "note": "Select the QA role",
+                "findBy": "css",
+                "target": "[data-testid='role-select']",
+                "selectType": "value",
+                "value": "qa",
+            },
+        )
+
+        self.assertEqual(Result.OK, result["returnCode"])
+        driver.execute_script.assert_called_once()
+        script, script_element, select_type, value = driver.execute_script.call_args.args
+        self.assertIn("dispatchEvent", script)
+        self.assertEqual(element, script_element)
+        self.assertEqual("value", select_type)
+        self.assertEqual("qa", value)
+
+    @patch("idelium._internal.wrappers.ideliumselenium.printer")
+    def test_select_reports_errors_as_strings(self, active_printer):
+        driver = Mock()
+        driver.find_element.side_effect = ElementClickInterceptedException(
+            "element click intercepted"
+        )
+        wrapper = IdeliumSelenium()
+
+        result = wrapper.select(
+            driver,
+            {},
+            {
+                "note": "Select the QA role",
+                "findBy": "css",
+                "target": "[data-testid='role-select']",
+                "selectType": "value",
+                "value": "qa",
+            },
+        )
+
+        self.assertEqual(Result.KO, result["returnCode"])
+        for call in active_printer.danger.call_args_list:
+            self.assertIsInstance(call.args[0], str)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -613,32 +613,75 @@ class IdeliumSelenium:
     def select(self, driver, config, object_step):
         """select"""
 
-        print(object_step)
         try:
             print(object_step["note"], end="->", flush=True)
             time.sleep(1)
-            select = Select(self._find_step_element(driver, object_step))
-            if "selectType" in object_step:
-                if object_step["selectType"] == "label":
-                    select.select_by_visible_text(object_step["value"])
-                elif object_step["selectType"] == "value":
-                    select.select_by_value(object_step["value"])
-                elif object_step["selectType"] == "index":
-                    select.select_by_index(object_step["value"])
-                else:
-                    printer.danger(
-                        "selectType:"
-                        + object_step["selectType"]
-                        + " not supported in this moment"
-                    )
-            else:
-                select.select_by_visible_text(object_step["value"])
+            element = self._find_step_element(driver, object_step)
+            try:
+                self._select_native_option(element, object_step)
+            except ElementClickInterceptedException:
+                self._select_native_option_with_script(driver, element, object_step)
             printer.success("ok")
             return {"returnCode": Result.OK}
         except BaseException as err:
             printer.danger("FAILED")
-            printer.danger(err)
+            printer.danger(str(err))
             return self._error_result(err)
+
+    @staticmethod
+    def _select_native_option(element, object_step):
+        """Select a native HTML option using Selenium's standard Select API."""
+
+        select = Select(element)
+        select_type = object_step.get("selectType", "label")
+        value = object_step["value"]
+        if select_type == "label":
+            select.select_by_visible_text(value)
+        elif select_type == "value":
+            select.select_by_value(value)
+        elif select_type == "index":
+            select.select_by_index(int(value))
+        else:
+            raise ValueError("Unsupported selectType: " + str(select_type))
+
+    @staticmethod
+    def _select_native_option_with_script(driver, element, object_step):
+        """Select an option through DOM events when WebDriver click is intercepted."""
+
+        select_type = object_step.get("selectType", "label")
+        if select_type not in {"label", "value", "index"}:
+            raise ValueError("Unsupported selectType: " + str(select_type))
+        driver.execute_script(
+            """
+            const select = arguments[0];
+            const mode = arguments[1];
+            const rawValue = arguments[2];
+            const options = Array.from(select.options || []);
+            let option = null;
+
+            if (mode === 'value') {
+                option = options.find((item) => item.value === String(rawValue));
+            } else if (mode === 'label') {
+                option = options.find(
+                    (item) => item.text.trim() === String(rawValue).trim()
+                );
+            } else if (mode === 'index') {
+                option = options[Number(rawValue)];
+            }
+
+            if (!option) {
+                throw new Error(`Select option not found for ${mode}: ${rawValue}`);
+            }
+
+            select.value = option.value;
+            option.selected = true;
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            """,
+            element,
+            select_type,
+            object_step["value"],
+        )
 
     def clear(self, driver, config, object_step):
         """clear"""
