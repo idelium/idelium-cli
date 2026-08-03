@@ -241,6 +241,53 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             start.call_args_list[1].args[2],
         )
 
+    def test_performed_cycle_creation_includes_safe_execution_context(self):
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "environment": "demo",
+            "environmentResolution": {"selected": "demo"},
+            "browser": "firefox",
+            "device": "Pixel 8",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "json_config": {
+                "browser": "chrome",
+                "platformName": "linux",
+                "platformVersion": "6.10",
+                "runtime": "selenium",
+                "seleniumGridUrl": "https://grid.example.invalid",
+            },
+            "seleniumGridCapabilities": {
+                "browserVersion": "stable",
+                "se:secret": "must-not-be-sent",
+            },
+        }
+
+        with patch("idelium._internal.ideliumws.Connection.start") as start:
+            start.return_value = {"idCycle": 77}
+
+            result = IdeliumWs.create_folder(config)
+
+        self.assertEqual({"idCycle": 77}, result)
+        self.assertEqual("POST", start.call_args.args[0])
+        self.assertEqual(
+            {
+                "testCycleId": "2",
+                "executionContext": {
+                    "environment": "demo",
+                    "environmentName": "demo",
+                    "browser": "firefox",
+                    "browserVersion": "stable",
+                    "device": "Pixel 8",
+                    "platformName": "linux",
+                    "platformVersion": "6.10",
+                    "runtime": "selenium",
+                },
+            },
+            start.call_args.args[2],
+        )
+
     def test_performed_cycle_finalization_uses_terminal_status(self):
         config = {
             "api_idelium": "https://localhost/api/ideliumcl/",

@@ -56,10 +56,56 @@ class IdeliumWs:
         url = config["api_idelium"] + "testcycle"
         payload = {
             "testCycleId": config["idCycle"],
+            "executionContext": IdeliumWs.execution_context(config),
         }
         return Connection.start(
             "POST", url, payload, config["ideliumKey"], config["is_debug"]
         )
+
+    @staticmethod
+    def execution_context(config):
+        """Build non-sensitive execution metadata for the performed run."""
+
+        json_config = config.get("json_config") or {}
+        appium_caps = json_config.get("appiumDesiredCaps") or {}
+        capabilities = config.get("seleniumGridCapabilities") or {}
+        context = {
+            "environment": config.get("environment"),
+            "environmentName": (
+                config.get("environmentResolution", {}).get("selected")
+                or config.get("environment")
+            ),
+            "browser": (
+                config.get("browser")
+                or json_config.get("browser")
+                or capabilities.get("browserName")
+                or appium_caps.get("browserName")
+            ),
+            "browserVersion": (
+                capabilities.get("browserVersion")
+                or capabilities.get("version")
+                or appium_caps.get("browserVersion")
+            ),
+            "device": config.get("device") or json_config.get("device"),
+            "deviceName": appium_caps.get("deviceName") or json_config.get("deviceName"),
+            "deviceType": json_config.get("deviceType"),
+            "platformName": (
+                json_config.get("platformName")
+                or capabilities.get("platformName")
+                or appium_caps.get("platformName")
+            ),
+            "platformVersion": (
+                json_config.get("platformVersion")
+                or capabilities.get("platformVersion")
+                or appium_caps.get("platformVersion")
+            ),
+            "runtime": json_config.get("runtime"),
+        }
+        return {
+            key: str(value)
+            for key, value in context.items()
+            if value is not None and str(value).strip() != ""
+        }
 
     @staticmethod
     def update_folder(config, id_cycle, status):
