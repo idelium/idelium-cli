@@ -5,7 +5,10 @@ import sys
 import ssl
 import os
 import re
+import shutil
+import subprocess
 import warnings
+from importlib import metadata
 from typing import List, Optional
 
 from http.server import HTTPServer
@@ -32,6 +35,15 @@ printer = InitPrinter()
 ideliumws = IdeliumWs()
 idelium_cl_lib = InitIdelium()
 IDELIUM_VERSION = "1.0.14"
+IDELIUM_ORANGE = "\033[38;2;255;92;31m"
+ANSI_RESET = "\033[0m"
+IDELIUM_ASCII_LOGO = r"""
+ ___ ____  _____ _     ___ _   _ __  __
+|_ _|  _ \| ____| |   |_ _| | | |  \/  |
+ | || | | |  _| | |    | || | | | |\/| |
+ | || |_| | |___| |___ | || |_| | |  | |
+|___|____/|_____|_____|___|\___/|_|  |_|
+"""
 _SENSITIVE_ERROR_PATTERNS = (
     re.compile(r"(?i)(authorization|cookie|key|password|secret|session|token)=\S+"),
     re.compile(r"(?i)(authorization|cookie|key|password|secret|session|token):\S+"),
@@ -45,6 +57,62 @@ def format_unexpected_error(error: Exception) -> str:
     for pattern in _SENSITIVE_ERROR_PATTERNS:
         message = pattern.sub(lambda match: match.group(1) + "=[REDACTED]", message)
     return f"Unexpected internal CLI error: {error.__class__.__name__}: {message}"
+
+
+def startup_banner() -> str:
+    """Return the startup banner shown before CLI execution."""
+
+    return (
+        IDELIUM_ORANGE
+        + IDELIUM_ASCII_LOGO.strip("\n")
+        + ANSI_RESET
+        + "\n"
+        + f"Idelium Command Line {IDELIUM_VERSION}"
+    )
+
+
+def _python_package_version(package_name: str) -> str:
+    """Return an installed Python package version or a readable fallback."""
+
+    try:
+        return metadata.version(package_name)
+    except metadata.PackageNotFoundError:
+        return "not installed"
+
+
+def _newman_version() -> str:
+    """Return the Newman CLI version when the binary is available."""
+
+    binary = shutil.which("newman")
+    if not binary:
+        return "not found"
+    try:
+        completed = subprocess.run(
+            [binary, "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "not available"
+    version = (completed.stdout or completed.stderr).strip().splitlines()
+    return version[0].strip() if version else "not available"
+
+
+def framework_versions_banner() -> str:
+    """Return runtime framework versions used by the CLI."""
+
+    frameworks = (
+        ("Selenium", idelium_cl_lib.get_selenium_version()),
+        ("Appium Python Client", _python_package_version("Appium-Python-Client")),
+        ("Newman", _newman_version()),
+        ("Requests", _python_package_version("requests")),
+        ("WebDriver Manager", _python_package_version("webdriver-manager")),
+    )
+    return "Framework versions: " + " | ".join(
+        f"{name} {version}" for name, version in frameworks
+    )
 
 
 def start_server(cl_params):
@@ -86,10 +154,11 @@ def start_test(cl_params):
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    printer.print_important_text(f"Idelium Command Line {IDELIUM_VERSION}")
+    printer.print_important_text(startup_banner())
     printer.print_important_text(
         f"Selenium version: {idelium_cl_lib.get_selenium_version()}"
     )
+    printer.print_important_text(framework_versions_banner())
     if args is None:
         args = sys.argv
 

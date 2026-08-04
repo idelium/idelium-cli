@@ -7,6 +7,24 @@ from idelium._internal.ideliumclib import InitIdelium
 
 
 class CliArgumentParsingTest(unittest.TestCase):
+    def test_help_documents_current_runtime_options(self):
+        syntax = InitIdelium.get_syntax()
+
+        self.assertIn(
+            "--width                 browser viewport width in pixels (default: 1920)",
+            syntax,
+        )
+        self.assertIn(
+            "--height                browser viewport height in pixels (default: 1080)",
+            syntax,
+        )
+        self.assertIn(
+            "--forcedownload         refresh downloaded configuration and step artifacts",
+            syntax,
+        )
+        self.assertIn("Zephyr", syntax)
+        self.assertIn("--ideliumwsBaseurl=https://localhost", syntax)
+
     def test_accepts_space_separated_option_values(self):
         loader = InitIdelium()
         printer = Mock()
