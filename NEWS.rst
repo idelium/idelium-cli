@@ -1,6 +1,17 @@
 Idelium CLI release notes
 =========================
 
+1.0.15.dev0 (2026-08-04)
+------------------------
+
+Development release
+~~~~~~~~~~~~~~~~~~~
+
+* Published as a development release while the CLI execution, reporting, and
+  browser/runtime integration features continue to evolve.
+* Keeps the package installable for local validation without declaring the next
+  stable 1.0.15 release complete.
+
 1.0.14 (2026-07-22)
 -------------------
 
