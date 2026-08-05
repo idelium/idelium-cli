@@ -1,6 +1,19 @@
 Idelium CLI release notes
 =========================
 
+1.0.15.dev1 (2026-08-05)
+------------------------
+
+Development release
+~~~~~~~~~~~~~~~~~~~
+
+* Improves DSL execution failure reporting so remote step-result errors do not
+  hide the original test failure.
+* Refreshes the API session before posting step results, improving reliability
+  for longer-running browser and DSL executions.
+* Remains a development release for validation before the stable 1.0.15
+  release.
+
 1.0.15.dev0 (2026-08-04)
 ------------------------
 
