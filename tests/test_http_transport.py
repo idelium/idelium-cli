@@ -129,6 +129,23 @@ class HttpTransportTest(unittest.TestCase):
         self.assertIn("PUT", retry.allowed_methods)
         self.assertNotIn("POST", retry.allowed_methods)
 
+    @patch("idelium._internal.commons.connection.requests.Session")
+    def test_reset_session_discards_idle_connections_without_changing_policy(
+        self, session_factory
+    ):
+        idle_session = Mock()
+        fresh_session = Mock()
+        session_factory.return_value = fresh_session
+        client = HttpClient(session=idle_session, verify=False, timeout=(3, 9))
+
+        client.reset_session()
+
+        idle_session.close.assert_called_once_with()
+        self.assertIs(client.session, fresh_session)
+        self.assertEqual(2, fresh_session.mount.call_count)
+        self.assertFalse(client.verify)
+        self.assertEqual((3, 9), client.timeout)
+
     def test_verbose_output_redacts_sensitive_query_values_and_headers(self):
         session = Mock()
         session.request.return_value = self.response()

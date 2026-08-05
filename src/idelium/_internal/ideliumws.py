@@ -164,6 +164,9 @@ class IdeliumWs:
             "type": typeofstep,
             "screenshots": "[]",
         }
+        # Step execution can outlive the server keep-alive timeout. Do not reuse
+        # an idle connection for this non-idempotent request.
+        Connection.reset_session()
         return Connection.start(
             "POST", url, payload, config["ideliumKey"], config["is_debug"]
         )

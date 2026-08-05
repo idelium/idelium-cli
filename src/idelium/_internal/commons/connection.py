@@ -48,9 +48,19 @@ class HttpClient:
         self.verify = verify
         self.timeout = timeout
         self.retry_policy = retry_policy or RetryPolicy(total=retries)
+        self._mount_adapters()
+
+    def _mount_adapters(self):
+        """Install the shared retry policy on the active HTTP session."""
         adapter = HTTPAdapter(max_retries=self.retry_policy.to_urllib3())
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
+
+    def reset_session(self):
+        """Discard pooled connections before an unsafe, long-running result POST."""
+        self.session.close()
+        self.session = requests.Session()
+        self._mount_adapters()
 
     @classmethod
     def _is_sensitive(cls, key):
@@ -190,6 +200,11 @@ class Connection:
     def request(cls, method, url, **kwargs):
         """Return a raw validated response for third-party integrations."""
         return cls._client.request(method, url, **kwargs)
+
+    @classmethod
+    def reset_session(cls):
+        """Open a fresh transport session without changing TLS or timeout settings."""
+        cls._client.reset_session()
 
     @classmethod
     def start(cls, method, url, payload=None, api_key=None, debug=False):
