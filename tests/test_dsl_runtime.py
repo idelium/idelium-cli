@@ -5,8 +5,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import ElementClickInterceptedException, NoSuchElementException
 from selenium.webdriver.common.by import By
 
 from idelium._internal.dsl import DslRuntimeOptions, execute_ast, parse_source
@@ -77,6 +78,9 @@ class FakeDriver:
         Path(path).write_text("fake image", encoding="utf-8")
         return True
 
+    def execute_script(self, script, *args):
+        self.calls.append(("execute_script", script, args))
+
 
 class DslRuntimeTest(unittest.TestCase):
     def test_executes_minimal_browser_command_set_end_to_end(self):
@@ -131,6 +135,14 @@ test "Runtime smoke" {
                 [statement["kind"] for statement in result["tests"][0]["statements"]],
             )
             self.assertTrue(submit.clicked)
+            self.assertIn(
+                (
+                    "execute_script",
+                    "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                    (submit,),
+                ),
+                driver.calls,
+            )
             self.assertEqual(["super-secret"], email.sent_keys)
             self.assertTrue((Path(directory) / "runtime-smoke.png").exists())
             self.assertIn(
@@ -141,6 +153,32 @@ test "Runtime smoke" {
                 "[REDACTED]",
                 result["tests"][0]["statements"][4]["output"]["value"],
             )
+
+    @patch("idelium._internal.dsl.runtime.ActionChains")
+    def test_click_uses_action_chain_fallback_when_intercepted(self, action_chains):
+        source = """idelium 1.0
+
+test "Click intercepted" {
+    click css "#submit"
+}
+"""
+        ast = parse_source(source, source_name="click.idelium")
+        driver = FakeDriver()
+        element = driver.add(By.CSS_SELECTOR, "#submit", FakeElement())
+        element.click = unittest.mock.Mock(
+            side_effect=ElementClickInterceptedException("intercepted")
+        )
+        chain = action_chains.return_value
+        chain.move_to_element.return_value = chain
+        chain.click.return_value = chain
+
+        result = execute_ast(ast, driver)
+
+        self.assertEqual("passed", result["status"])
+        self.assertEqual(2, len([call for call in driver.calls if call[0] == "execute_script"]))
+        chain.move_to_element.assert_called_once_with(element)
+        chain.click.assert_called_once_with(element)
+        chain.perform.assert_called_once_with()
 
     def test_unsupported_node_fails_safely_and_skips_following_nodes(self):
         ast = {
@@ -169,6 +207,30 @@ test "Runtime smoke" {
             statements[0]["diagnostics"][0]["code"],
         )
         self.assertEqual("skipped", statements[1]["status"])
+
+    def test_failed_and_skipped_locator_steps_keep_diagnostic_context(self):
+        source = """idelium 1.0
+
+test "Locator context" {
+    assert visible css "#missing"
+    wait css "#later" visible timeout 250ms
+}
+"""
+        ast = parse_source(source, source_name="locator-context.idelium")
+
+        result = execute_ast(ast, FakeDriver())
+
+        statements = result["tests"][0]["statements"]
+        self.assertEqual("failed", result["status"])
+        self.assertEqual(
+            {"strategy": "css", "value": "#missing"},
+            statements[0]["output"]["locator"],
+        )
+        self.assertEqual("skipped", statements[1]["status"])
+        self.assertEqual(
+            {"strategy": "css", "value": "#later"},
+            statements[1]["output"]["locator"],
+        )
 
     def test_unknown_fields_are_rejected_before_dispatch(self):
         ast = {

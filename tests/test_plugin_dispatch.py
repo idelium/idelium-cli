@@ -12,6 +12,53 @@ from idelium._internal.pluginapi import (
 )
 
 
+class FakeDslElement:
+    def __init__(self):
+        self.clicked = False
+
+    def click(self):
+        self.clicked = True
+
+    def send_keys(self, value):
+        self.value = value
+
+    def is_displayed(self):
+        return True
+
+    def is_enabled(self):
+        return True
+
+    def get_attribute(self, name):
+        return getattr(self, name, "")
+
+
+class FakeDslDriver:
+    def __init__(self):
+        self.elements = {}
+        self.calls = []
+        self.current_url = "https://example.invalid/demo"
+        self.title = "Demo"
+
+    def add(self, strategy, selector, element):
+        self.elements[(strategy, selector)] = element
+        return element
+
+    def get(self, url):
+        self.calls.append(("get", url))
+
+    def find_element(self, strategy, selector):
+        self.calls.append(("find_element", strategy, selector))
+        return self.elements[(strategy, selector)]
+
+    def find_elements(self, strategy, selector):
+        self.calls.append(("find_elements", strategy, selector))
+        return [
+            element
+            for (element_strategy, element_selector), element in self.elements.items()
+            if element_strategy == strategy and element_selector == selector
+        ]
+
+
 class PluginDispatchTest(unittest.TestCase):
     def _config(self, step, plugins=None):
         wrapper = Mock()
@@ -90,6 +137,116 @@ class PluginDispatchTest(unittest.TestCase):
             str(call.args[0]) for call in config["printer"].danger.call_args_list
         )
         self.assertNotIn("hunter2", printed)
+
+
+class DslStepDispatchTest(unittest.TestCase):
+    def _config(self, step):
+        wrapper = Mock()
+        wrapper.command.side_effect = (
+            lambda command, driver, config, object_step: {
+                "driver": driver,
+                "returnCode": Result.OK,
+                "config": config,
+            }
+            if command == "open_browser"
+            else None
+        )
+        return {
+            "wrapper": wrapper,
+            "printer": Mock(),
+            "json_step": {"steps": [step]},
+            "json_config": {},
+            "plugins": {},
+            "is_debug": False,
+            "ideliumServer": True,
+            "dir_step_files": None,
+            "dslParameters": {"variables": {}, "secretNames": []},
+        }
+
+    def test_dsl_step_executes_without_plugin_fallback(self):
+        source = """idelium 1.0
+
+test "Imported DSL" {
+    open "https://example.invalid/demo"
+    wait css "#ready" visible timeout 250ms
+    assert visible css "#ready"
+}
+"""
+        step = {
+            "stepType": "dsl",
+            "runtime": "dsl",
+            "schemaVersion": "dsl.source.v1",
+            "languageVersion": "1.0",
+            "source": source,
+        }
+        driver = FakeDslDriver()
+        driver.add("css selector", "#ready", FakeDslElement())
+        config = self._config(step)
+
+        result = StartManager.execute_step(driver, config)
+
+        self.assertEqual("1", result["status"])
+        self.assertEqual("dsl", result["type"])
+        self.assertEqual("passed", result["dsl_result"]["status"])
+        self.assertIn(("get", "https://example.invalid/demo"), driver.calls)
+        printed = " ".join(
+            str(call.args[0]) for call in config["printer"].success.call_args_list
+        )
+        self.assertIn("wait css #ready -> PASSED", printed)
+        config["wrapper"].command.assert_not_called()
+
+    def test_dsl_step_bootstraps_browser_when_driver_is_missing(self):
+        source = """idelium 1.0
+
+test "Imported DSL" {
+    open "https://example.invalid/demo"
+    assert visible css "#ready"
+}
+"""
+        step = {
+            "stepType": "dsl",
+            "runtime": "dsl",
+            "schemaVersion": "dsl.source.v1",
+            "languageVersion": "1.0",
+            "source": source,
+        }
+        driver = FakeDslDriver()
+        driver.add("css selector", "#ready", FakeDslElement())
+        config = self._config(step)
+        config["wrapper"].command.side_effect = (
+            lambda command, current_driver, command_config, object_step: {
+                "driver": driver,
+                "returnCode": Result.OK,
+                "config": command_config,
+            }
+            if command == "open_browser"
+            else None
+        )
+
+        result = StartManager.execute_step(None, config)
+
+        self.assertEqual("1", result["status"])
+        self.assertEqual(driver, result["driver"])
+        self.assertEqual("passed", result["dsl_result"]["status"])
+        config["wrapper"].command.assert_called_once()
+
+    def test_invalid_dsl_source_fails_without_plugin_fallback(self):
+        step = {
+            "stepType": "dsl",
+            "runtime": "dsl",
+            "schemaVersion": "dsl.source.v1",
+            "languageVersion": "1.0",
+            "source": "idelium 1.0\n\ntest \"Broken\" {\n    CLICK css \"#ready\"\n}\n",
+        }
+        config = self._config(step)
+
+        result = StartManager.execute_step(FakeDslDriver(), config)
+
+        self.assertEqual("2", result["status"])
+        self.assertEqual("dsl", result["type"])
+        self.assertEqual(step, result["step_failed"])
+        self.assertIsNone(result["dsl_result"])
+        config["wrapper"].command.assert_not_called()
 
 
 if __name__ == "__main__":

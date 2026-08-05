@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 from idelium._internal.commons.connection import HttpTransportError
 from idelium._internal.exitcodes import (
+    EXIT_CONNECTIVITY_ERROR,
     EXIT_DEPENDENCY_ERROR,
     EXIT_SUCCESS,
     EXIT_TEST_FAILURE,
@@ -197,7 +198,12 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
             "is_debug": False,
         }
 
-        with patch("idelium._internal.ideliumws.Connection.start") as start:
+        with (
+            patch("idelium._internal.ideliumws.Connection.start") as start,
+            patch(
+                "idelium._internal.ideliumws.Connection.reset_session"
+            ) as reset_session,
+        ):
             start.side_effect = [{"idTest": 91}, {"idStep": 92}]
 
             created_test = IdeliumWs.create_test(
@@ -219,6 +225,7 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
 
         self.assertEqual({"idTest": 91}, created_test)
         self.assertEqual({"idStep": 92}, created_step)
+        reset_session.assert_called_once_with()
         self.assertEqual(
             {
                 "testCycleId": 77,
@@ -428,6 +435,92 @@ class IdeliumWsConfigurationTest(unittest.TestCase):
         printer.danger.assert_called_once_with(
             "Unable to finalize the remote performed test cycle 77: "
             "PUT request returned HTTP 500"
+        )
+
+    def test_passed_step_reporting_transport_failure_is_not_step_failure(self):
+        web_service = IdeliumWs()
+        printer = Mock()
+        config = {
+            "api_idelium": "https://localhost/api/ideliumcl/",
+            "idCycle": "2",
+            "idProject": "1",
+            "ideliumKey": "local-test-key",
+            "is_debug": False,
+            "test": False,
+            "ideliumServer": False,
+            "printer": printer,
+        }
+        test_configurations = {
+            "steps": {
+                "dsl_15": {
+                    "name": "dsl",
+                    "type": "dsl",
+                    "attachScreenshot": False,
+                    "failedExit": True,
+                }
+            }
+        }
+        idelium = Mock()
+        idelium.get_wrapper.return_value = Mock()
+        idelium.execute_step.return_value = {
+            "status": "1",
+            "driver": None,
+            "postman_data": [],
+            "type": "dsl",
+            "step_failed": "",
+        }
+
+        with (
+            patch.object(
+                web_service,
+                "get_cycles",
+                return_value=[
+                    {
+                        "id": 11,
+                        "name": "dsl cycle",
+                        "description": "dsl cycle",
+                    }
+                ],
+            ),
+            patch.object(
+                web_service,
+                "get_tests",
+                return_value=[{"id": 15, "name": "dsl"}],
+            ),
+            patch.object(
+                web_service,
+                "create_folder",
+                return_value={"idCycle": 77},
+            ),
+            patch.object(
+                web_service,
+                "create_test",
+                return_value={"idTest": 91},
+            ),
+            patch.object(
+                web_service,
+                "create_step",
+                side_effect=HttpTransportError(
+                    "POST request failed for https://localhost/api/ideliumcl/step"
+                ),
+            ),
+            patch.object(web_service, "update_test") as update_test,
+            patch.object(web_service, "update_folder") as update_folder,
+        ):
+            exit_code = web_service.start_test(idelium, test_configurations, config)
+
+        self.assertEqual(EXIT_CONNECTIVITY_ERROR, exit_code)
+        update_test.assert_called_once_with(config, 91, 1, [])
+        update_folder.assert_called_once_with(config, 77, 2)
+        printer.danger.assert_any_call(
+            "Unable to persist the remote step result for step 15: "
+            "POST request failed for https://localhost/api/ideliumcl/step"
+        )
+        self.assertFalse(
+            any(
+                "Step failed with an unexpected CLI error" in str(call)
+                for call in printer.danger.call_args_list
+            )
         )
 
     def test_step_creation_accepts_versioned_performed_trace_in_data_contract(self):

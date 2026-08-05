@@ -576,7 +576,7 @@ class IdeliumWs:
                             config["step_failed"] = step_failed
                             # test["name"],
                             if config["test"] is False:
-                                id_step = self.create_step(
+                                id_step, reporting_exit_code = self._create_step_safely(
                                     config,
                                     id_cycle,
                                     id_test,
@@ -585,7 +585,12 @@ class IdeliumWs:
                                     status,
                                     postman_data,
                                     typeofstep,
-                                )["idStep"]
+                                    printer,
+                                )
+                                exit_code = self._merge_reporting_exit_code(
+                                    exit_code,
+                                    reporting_exit_code,
+                                )
                         except Exception as error:
                             duration_ms = int((time.monotonic() - started_at) * 1000)
                             status = "2"
@@ -607,7 +612,7 @@ class IdeliumWs:
                             config["status"] = status
                             config["step_failed"] = step_failed
                             if config["test"] is False:
-                                id_step = self.create_step(
+                                id_step, reporting_exit_code = self._create_step_safely(
                                     config,
                                     id_cycle,
                                     id_test,
@@ -616,8 +621,23 @@ class IdeliumWs:
                                     status,
                                     failed_payload,
                                     typeofstep,
-                                )["idStep"]
-                                self.update_test(config, id_test, 2, postman_data)
+                                    printer,
+                                )
+                                exit_code = self._merge_reporting_exit_code(
+                                    exit_code,
+                                    reporting_exit_code,
+                                )
+                                reporting_exit_code = self._update_test_safely(
+                                    config,
+                                    id_test,
+                                    2,
+                                    postman_data,
+                                    printer,
+                                )
+                                exit_code = self._merge_reporting_exit_code(
+                                    exit_code,
+                                    reporting_exit_code,
+                                )
                             report_test["steps"].append(
                                 self._report_step_event(
                                     test,
@@ -659,7 +679,17 @@ class IdeliumWs:
                                 or config["json_step"]["failedExit"] is True
                             )
                             if config["test"] is False:
-                                self.update_test(config, id_test, 2, postman_data)
+                                reporting_exit_code = self._update_test_safely(
+                                    config,
+                                    id_test,
+                                    2,
+                                    postman_data,
+                                    printer,
+                                )
+                                exit_code = self._merge_reporting_exit_code(
+                                    exit_code,
+                                    reporting_exit_code,
+                                )
                             if should_stop:
                                 printer.danger(
                                     "The test '"
@@ -669,7 +699,17 @@ class IdeliumWs:
                                 test_failed = True
                         else:
                             if config["test"] is False:
-                                self.update_test(config, id_test, 1, postman_data)
+                                reporting_exit_code = self._update_test_safely(
+                                    config,
+                                    id_test,
+                                    1,
+                                    postman_data,
+                                    printer,
+                                )
+                                exit_code = self._merge_reporting_exit_code(
+                                    exit_code,
+                                    reporting_exit_code,
+                                )
                         report_test["steps"].append(
                             self._report_step_event(
                                 test,
@@ -699,7 +739,7 @@ class IdeliumWs:
                             skipped_reason,
                         )
                         if config["test"] is False:
-                            self.create_step(
+                            _, reporting_exit_code = self._create_step_safely(
                                 config,
                                 id_cycle,
                                 id_test,
@@ -708,6 +748,11 @@ class IdeliumWs:
                                 "5",
                                 skipped_payload,
                                 typeofstep,
+                                printer,
+                            )
+                            exit_code = self._merge_reporting_exit_code(
+                                exit_code,
+                                reporting_exit_code,
                             )
                         report_test["steps"].append(
                             {
@@ -754,6 +799,54 @@ class IdeliumWs:
                 exit_code = finalize_exit_code
         self._write_execution_reports(report_events, config, exit_code, printer)
         return exit_code
+
+    @staticmethod
+    def _merge_reporting_exit_code(exit_code, reporting_exit_code):
+        if exit_code == EXIT_SUCCESS and reporting_exit_code != EXIT_SUCCESS:
+            return reporting_exit_code
+        return exit_code
+
+    def _create_step_safely(
+        self,
+        config,
+        id_cycle,
+        id_test,
+        id_step,
+        name,
+        status,
+        data,
+        typeofstep,
+        printer,
+    ):
+        try:
+            result = self.create_step(
+                config,
+                id_cycle,
+                id_test,
+                id_step,
+                name,
+                status,
+                data,
+                typeofstep,
+            )
+            return result["idStep"], EXIT_SUCCESS
+        except HttpTransportError as error:
+            printer.danger(
+                "Unable to persist the remote step result for step "
+                f"{id_step}: {self._safe_error_message(error)}"
+            )
+            return None, EXIT_CONNECTIVITY_ERROR
+
+    def _update_test_safely(self, config, id_test, status, postman_data, printer):
+        try:
+            self.update_test(config, id_test, status, postman_data)
+            return EXIT_SUCCESS
+        except HttpTransportError as error:
+            printer.danger(
+                "Unable to update the remote performed test "
+                f"{id_test}: {self._safe_error_message(error)}"
+            )
+            return EXIT_CONNECTIVITY_ERROR
 
     def _finalize_performed_cycle(self, config, id_cycle, exit_code, printer):
         if config["test"] is True or id_cycle is None or not config.get("api_idelium"):

@@ -3,6 +3,12 @@
 from __future__ import absolute_import
 import sys
 import shutil
+from idelium._internal.dsl import (
+    DslRuntimeOptions,
+    DslSyntaxError,
+    execute_ast,
+    parse_source,
+)
 from idelium._internal.commons.resultenum import Result
 from idelium._internal.pluginapi import (
     PluginContractError,
@@ -24,6 +30,103 @@ class StartManager:
 
     POSTMAN_NEWMAN_RUNTIMES = {"newman", "postman", "postman_newman"}
     POSTMAN_AUTO_RUNTIMES = {"auto", "postman_auto"}
+
+    @staticmethod
+    def _is_dsl_step(object_step):
+        """Detect versioned Idelium DSL source actions."""
+        markers = [
+            object_step.get("editorType"),
+            object_step.get("stepType"),
+            object_step.get("type"),
+            object_step.get("actionType"),
+            object_step.get("runtime"),
+        ]
+        return any(str(marker).lower() == "dsl" for marker in markers if marker)
+
+    @staticmethod
+    def _dsl_source(object_step):
+        """Return the DSL source string from supported persisted shapes."""
+        source = object_step.get("source")
+        if isinstance(source, str):
+            return source
+        config = object_step.get("config")
+        if isinstance(config, dict) and isinstance(config.get("source"), str):
+            return config["source"]
+        return ""
+
+    @staticmethod
+    def _print_dsl_results(printer, dsl_result):
+        """Print safe DSL statement diagnostics for terminal runs."""
+        tests = dsl_result.get("tests") or []
+        for test in tests:
+            status = str(test.get("status", "unknown")).upper()
+            line = "DSL test {} -> {}".format(test.get("name", "Unnamed test"), status)
+            if test.get("status") == "passed":
+                printer.success(line)
+            else:
+                printer.danger(line)
+            StartManager._print_dsl_statement_results(
+                printer,
+                test.get("statements") or [],
+                depth=1,
+            )
+
+    @staticmethod
+    def _dsl_statement_label(statement):
+        """Return a readable, non-sensitive DSL statement label."""
+        kind = statement.get("kind", "statement")
+        output = statement.get("output") or {}
+        locator = output.get("locator")
+        if isinstance(locator, dict):
+            strategy = locator.get("strategy")
+            value = locator.get("value")
+            if strategy and value:
+                return "{} {} {}".format(kind, strategy, value)
+        if "url" in output:
+            return "{} {}".format(kind, output["url"])
+        return kind
+
+    @staticmethod
+    def _print_dsl_statement_results(printer, statements, depth):
+        """Print flattened DSL statement diagnostics without leaking secrets."""
+        prefix = "  " * depth
+        for statement in statements:
+            label = StartManager._dsl_statement_label(statement)
+            status = str(statement.get("status", "unknown")).upper()
+            line = "{}{} -> {}".format(prefix, label, status)
+            if statement.get("status") == "passed":
+                printer.success(line)
+            elif statement.get("status") == "skipped":
+                printer.warning(line)
+            else:
+                printer.danger(line)
+                for diagnostic in statement.get("diagnostics") or []:
+                    message = diagnostic.get("message")
+                    if message:
+                        printer.danger("{}  {}".format(prefix, message))
+            output = statement.get("output") or {}
+            nested = output.get("statements") or []
+            StartManager._print_dsl_statement_results(printer, nested, depth + 1)
+            for iteration in output.get("iterations") or []:
+                StartManager._print_dsl_statement_results(
+                    printer,
+                    iteration.get("statements") or [],
+                    depth + 1,
+                )
+
+    @staticmethod
+    def _ensure_dsl_driver(driver, config, wrapper):
+        """Start a browser session before dispatching a browser-oriented DSL step."""
+        if driver is not None:
+            return {"driver": driver, "returnCode": Result.OK}
+
+        bootstrap_step = {
+            "stepType": "open_browser",
+            "url": "about:blank",
+            "xpath": "/html",
+            "note": "Start browser for DSL step",
+        }
+        return wrapper.command("open_browser", driver, config, bootstrap_step)
 
     @staticmethod
     def _postman_missing_newman_result():
@@ -219,6 +322,7 @@ class StartManager:
         printer = config["printer"]
         typeOfStep = "seleniumOrAppium"
         postman_data = None
+        dsl_result = None
         dependency_failed = False
         if not config["json_step"].get("steps") and StartManager._is_postman_step(
             config["json_step"]
@@ -296,6 +400,57 @@ class StartManager:
                     step_failed = object_step
                 continue
 
+            if StartManager._is_dsl_step(object_step):
+                typeOfStep = "dsl"
+                source = StartManager._dsl_source(object_step)
+                if not source.strip():
+                    printer.danger(
+                        "DSL step has no executable source. Re-import the test with a dsl.source.v1 action that contains the DSL source."
+                    )
+                    status = "2"
+                    step_failed = object_step
+                    continue
+                try:
+                    ast = parse_source(source, source_name=object_step.get("name"))
+                    driver_result = StartManager._ensure_dsl_driver(
+                        driver,
+                        config,
+                        wrapper,
+                    )
+                    if driver_result is None or driver_result.get("returnCode") == Result.KO:
+                        printer.danger("Unable to start a browser session for DSL step.")
+                        status = "2"
+                        step_failed = object_step
+                        continue
+                    driver = driver_result.get("driver")
+                    if "config" in driver_result:
+                        config = driver_result["config"]
+                    dsl_parameters = config.get("dslParameters") or {}
+                    dsl_result = execute_ast(
+                        ast,
+                        driver,
+                        options=DslRuntimeOptions(
+                            screenshot_directory=config.get("dir_step_files"),
+                            variables=dsl_parameters.get("variables", {}),
+                            secret_names=set(dsl_parameters.get("secretNames", [])),
+                        ),
+                    )
+                    StartManager._print_dsl_results(printer, dsl_result)
+                    if dsl_result.get("status") != "passed":
+                        status = "2"
+                        step_failed = object_step
+                except DslSyntaxError as error:
+                    printer.danger("DSL source is invalid: " + str(error.diagnostic))
+                    status = "2"
+                    step_failed = object_step
+                except Exception as error:
+                    printer.danger(
+                        "DSL step failed with an unexpected CLI error: " + str(error)
+                    )
+                    status = "2"
+                    step_failed = object_step
+                continue
+
             return_object_step = wrapper.command(
                 object_step["stepType"], driver, config, object_step
             )
@@ -367,6 +522,7 @@ class StartManager:
             "step_failed": step_failed,
             "type": typeOfStep,
             "postman_data": postman_data,
+            "dsl_result": dsl_result,
             "dependency_failed": dependency_failed,
         }
 

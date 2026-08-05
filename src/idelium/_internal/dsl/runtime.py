@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    NoSuchElementException,
+    TimeoutException,
+)
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 
 from idelium._internal.retry_policy import RetryPolicyError, WaitPolicy
@@ -676,7 +681,12 @@ class DslAstRuntime:
 
     def _click(self, node: dict[str, Any]) -> dict[str, Any]:
         element = self._find(node["locator"])
-        element.click()
+        self._scroll_element_into_view(element)
+        try:
+            element.click()
+        except ElementClickInterceptedException:
+            self._scroll_element_into_view(element)
+            ActionChains(self.driver).move_to_element(element).click(element).perform()
         return {"locator": self._safe_locator(node["locator"])}
 
     def _write(self, node: dict[str, Any]) -> dict[str, Any]:
@@ -895,6 +905,14 @@ class DslAstRuntime:
         by = By.CSS_SELECTOR if locator["strategy"] == "css" else By.XPATH
         return self.driver.find_elements(by, self._interpolate(locator["value"], {}))
 
+    def _scroll_element_into_view(self, element: Any) -> None:
+        execute_script = getattr(self.driver, "execute_script", None)
+        if callable(execute_script):
+            execute_script(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                element,
+            )
+
     def _safe_locator(self, locator: dict[str, str]) -> dict[str, str]:
         return {
             "strategy": locator["strategy"],
@@ -1010,12 +1028,15 @@ class DslAstRuntime:
         safe_diagnostics = [
             self._safe_diagnostic(diagnostic) for diagnostic in (diagnostics or [])
         ]
+        safe_output = dict(output or {})
+        if "locator" in node and "locator" not in safe_output:
+            safe_output["locator"] = self._safe_locator(node["locator"])
         result = {
             "kind": node.get("kind", "unknown"),
             "status": status,
             "durationMilliseconds": duration_ms,
             "diagnostics": safe_diagnostics,
-            "output": output or {},
+            "output": safe_output,
             "trace": self._trace_payload(
                 node,
                 status,
@@ -1042,12 +1063,15 @@ class DslAstRuntime:
                 "message": message,
             }
         ]
+        safe_output = {}
+        if "locator" in node:
+            safe_output["locator"] = self._safe_locator(node["locator"])
         result = {
             "kind": node.get("kind", "unknown"),
             "status": "skipped",
             "durationMilliseconds": duration_ms,
             "diagnostics": diagnostics,
-            "output": {},
+            "output": safe_output,
             "trace": self._trace_payload(
                 node,
                 "skipped",
